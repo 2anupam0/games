@@ -245,6 +245,64 @@ body {
   60% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
   100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
 }
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 480px) {
+  #menuScreen, #gameScreen { gap: 1rem; padding: 0 16px; }
+  #menuScreen h1, #gameScreen h1 { font-size: 1.8rem; letter-spacing: 2px; }
+  #menuScreen .subtitle { font-size: 0.85rem; margin-top: -0.8rem; }
+  .menu-buttons { width: 100%; max-width: 300px; }
+  .menu-btn { padding: 14px 20px; font-size: 1rem; }
+  .menu-btn .label small { font-size: 0.7rem; }
+  .board { grid-template-columns: repeat(3, 85px); grid-template-rows: repeat(3, 85px); gap: 6px; }
+  .cell { width: 85px; height: 85px; font-size: 2.2rem; border-radius: 10px; }
+  .status { font-size: 0.95rem; margin-bottom: 0.5rem; }
+  .scoreboard { gap: 1rem; font-size: 0.8rem; }
+  .scoreboard .score { font-size: 1rem; }
+  .btn { padding: 8px 24px; font-size: 0.9rem; }
+  #lobbyScreen { width: 100%; padding: 0 16px; }
+  #lobbyScreen h2 { font-size: 1.2rem; }
+  .lobby-btn { padding: 12px 18px; font-size: 0.9rem; }
+  .modal { width: 90%; max-width: 340px; padding: 1.5rem; }
+  .modal h2 { font-size: 1.2rem; }
+  .modal-btn { padding: 12px 16px; font-size: 0.9rem; }
+  .modal-btn .modal-icon { font-size: 1.4rem; min-width: 30px; }
+  .modal-btn .modal-label small { font-size: 0.7rem; }
+  .room-code { font-size: 1.8rem; letter-spacing: 6px; padding: 10px 20px; }
+  .lobby-input { width: 150px; font-size: 1.2rem; }
+  .celebration-text { font-size: 2.5rem; }
+}
+@media (min-width: 481px) and (max-width: 768px) {
+  #menuScreen, #gameScreen { gap: 1.5rem; }
+  #menuScreen h1, #gameScreen h1 { font-size: 2.4rem; }
+  .menu-buttons { width: 320px; }
+  .board { grid-template-columns: repeat(3, 95px); grid-template-rows: repeat(3, 95px); }
+  .cell { width: 95px; height: 95px; font-size: 2.5rem; }
+  #lobbyScreen { width: 360px; }
+  .celebration-text { font-size: 3rem; }
+}
+@media (min-width: 769px) and (max-width: 1024px) {
+  #menuScreen h1, #gameScreen h1 { font-size: 2.6rem; }
+  .board { grid-template-columns: repeat(3, 100px); grid-template-rows: repeat(3, 100px); }
+}
+@media (min-height: 800px) {
+  #menuScreen, #gameScreen { gap: 2.5rem; }
+}
+@media (max-height: 600px) {
+  #menuScreen, #gameScreen { gap: 0.6rem; padding: 8px 0; }
+  #menuScreen h1, #gameScreen h1 { font-size: 1.4rem; margin-bottom: 0; }
+  #menuScreen .subtitle { display: none; }
+  .menu-buttons { gap: 0.5rem; }
+  .menu-btn { padding: 10px 16px; font-size: 0.9rem; }
+  .menu-btn .label small { display: none; }
+  .board { grid-template-columns: repeat(3, 70px); grid-template-rows: repeat(3, 70px); gap: 5px; margin-bottom: 0.5rem; }
+  .cell { width: 70px; height: 70px; font-size: 1.8rem; }
+  .status { font-size: 0.8rem; margin-bottom: 0.3rem; min-height: 1rem; }
+  .scoreboard { gap: 0.8rem; margin-top: 0.3rem; font-size: 0.75rem; }
+  .scoreboard .score { font-size: 0.85rem; }
+  .btn { padding: 6px 18px; font-size: 0.8rem; }
+  .celebration-text { font-size: 2rem; }
+}
 </style>
 </head>
 <body>
