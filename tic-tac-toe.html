@@ -463,7 +463,11 @@ function render() {
 function updateStatus() {
   const winner = checkWinner(board);
   if (winner) {
-    statusEl.textContent = `🎉 Player ${winner} wins!`;
+    if (mode === 'computer') {
+      statusEl.textContent = winner === 'X' ? '🎉 You Win!' : '😵 You Lose!';
+    } else {
+      statusEl.textContent = `🎉 Player ${winner} wins!`;
+    }
   } else if (isDraw(board)) {
     statusEl.textContent = "🤝 It's a draw!";
   } else if (mode === 'online' && ((amIHost && currentPlayer === 'O') || (!amIHost && currentPlayer === 'X'))) {
@@ -492,8 +496,8 @@ function afterMove() {
   const winner = checkWinner(board);
   if (winner || isDraw(board)) {
     gameOver = true;
-    if (winner) { scores[winner]++; celebrate(winner); }
-    else { scores.draw++; celebrate(null); }
+    if (winner) { scores[winner]++; celebrate(winner, mode); }
+    else { scores.draw++; celebrate(null, mode); }
     updateScoreboard();
     render();
     return;
@@ -529,8 +533,8 @@ function computerMove() {
   const winner = checkWinner(board);
   if (winner || isDraw(board)) {
     gameOver = true;
-    if (winner) scores[winner]++;
-    else scores.draw++;
+    if (winner) { scores[winner]++; celebrate(winner, 'computer'); }
+    else { scores.draw++; celebrate(null, 'computer'); }
     updateScoreboard();
     render();
     return;
@@ -1001,16 +1005,20 @@ function addStreamerText(text, color = '#fff') {
   }
 }
 
-function celebrate(winner) {
+function celebrate(winner, gameMode) {
   if (celebrationActive) return;
   celebrationActive = true;
   particles = [];
+
+  const isPlayerLose = gameMode === 'computer' && winner === 'O';
+  const isPlayerWin = gameMode === 'computer' && winner === 'X';
 
   const color = winner === 'X' ? '#60a5fa' : winner === 'O' ? '#f472b6' : '#fbbf24';
 
   // Flash
   const flash = document.createElement('div');
   flash.className = 'celebration-flash';
+  flash.style.background = isPlayerLose ? 'radial-gradient(circle, #ef4444, #000)' : 'white';
   document.body.appendChild(flash);
   setTimeout(() => flash.remove(), 700);
 
@@ -1018,15 +1026,25 @@ function celebrate(winner) {
   const text = document.createElement('div');
   text.className = 'celebration-text';
   text.style.color = color;
-  text.textContent = winner ? `🎉 ${winner} WINS! 🎉` : '🤝 DRAW!';
+  if (isPlayerLose) {
+    text.textContent = '💀 YOU LOSE! 💀';
+    text.style.fontSize = '3.5rem';
+  } else if (isPlayerWin) {
+    text.textContent = '🎉 YOU WIN! 🎉';
+  } else if (winner) {
+    text.textContent = `🎉 ${winner} WINS! 🎉`;
+  } else {
+    text.textContent = '🤝 DRAW!';
+  }
   document.body.appendChild(text);
-  setTimeout(() => text.remove(), 1200);
+  setTimeout(() => text.remove(), 1500);
 
-  burstConfetti(300);
+  const count = isPlayerLose ? 200 : 300;
+  burstConfetti(count);
   addStreamerText('', color);
 
-  setTimeout(() => burstConfetti(200), 600);
-  setTimeout(() => burstConfetti(150), 1200);
+  setTimeout(() => burstConfetti(isPlayerLose ? 120 : 200), 600);
+  setTimeout(() => burstConfetti(isPlayerLose ? 80 : 150), 1200);
 
   if (!animFrame) animateCelebration();
 
