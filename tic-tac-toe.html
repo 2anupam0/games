@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tic-Tac-Toe</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Segoe UI', sans-serif;
+  background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.screen { display: none; }
+.screen.active { display: flex; }
+
+#menuScreen, #gameScreen {
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+}
+#menuScreen h1, #gameScreen h1 {
+  color: #fff;
+  font-size: 3rem;
+  letter-spacing: 4px;
+  text-shadow: 0 0 40px rgba(124,58,237,0.4);
+}
+#menuScreen .subtitle {
+  color: #888;
+  font-size: 1rem;
+  margin-top: -1.5rem;
+}
+.menu-buttons { display: flex; flex-direction: column; gap: 1rem; width: 340px; }
+.menu-btn {
+  padding: 18px 32px;
+  border: 2px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  border-radius: 16px;
+  cursor: pointer;
+  font-size: 1.2rem;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.menu-btn:hover { background: rgba(124,58,237,0.2); border-color: #7c3aed; transform: translateY(-2px); }
+.menu-btn .icon { font-size: 1.6rem; min-width: 32px; text-align: center; }
+.menu-btn .label { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.3; }
+.menu-btn .label small { font-size: 0.75rem; color: #888; font-weight: normal; }
+
+
+.status {
+  color: #ccc;
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
+  min-height: 1.6rem;
+}
+.board {
+  display: grid;
+  grid-template-columns: repeat(3, 100px);
+  grid-template-rows: repeat(3, 100px);
+  gap: 8px;
+  margin-bottom: 1.5rem;
+}
+.cell {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.8rem;
+  font-weight: bold;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-shadow: 0 0 20px rgba(124,58,237,0.3);
+  width: 100px; height: 100px;
+  user-select: none;
+}
+.cell:hover { background: rgba(255,255,255,0.15); }
+.cell.x { color: #60a5fa; text-shadow: 0 0 20px rgba(96,165,250,0.5); }
+.cell.o { color: #f472b6; text-shadow: 0 0 20px rgba(244,114,182,0.5); }
+.cell.win { background: rgba(34,197,94,0.3) !important; border-color: #22c55e; }
+.cell.disabled { cursor: not-allowed; pointer-events: none; }
+.btn {
+  padding: 10px 32px;
+  background: #7c3aed;
+  color: #fff;
+  border: none;
+  border-radius: 25px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+.btn:hover { background: #6d28d9; transform: translateY(-2px); }
+.btn-outline {
+  background: transparent;
+  border: 2px solid rgba(255,255,255,0.2);
+  color: #aaa;
+  margin-right: 8px;
+}
+.btn-outline:hover { border-color: #7c3aed; color: #fff; background: transparent; }
+.scoreboard {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  margin-top: 1rem;
+  color: #aaa;
+  font-size: 0.9rem;
+}
+.scoreboard span { display: flex; align-items: center; gap: 6px; }
+.scoreboard .score { color: #fff; font-weight: bold; font-size: 1.1rem; }
+
+#lobbyScreen {
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  width: 380px;
+}
+#lobbyScreen h2 { color: #fff; font-size: 1.5rem; }
+.lobby-options { display: flex; gap: 0.8rem; flex-wrap: wrap; justify-content: center; }
+.lobby-btn {
+  padding: 14px 24px;
+  border: 2px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  border-radius: 14px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.3s;
+}
+.lobby-btn:hover { background: rgba(124,58,237,0.2); border-color: #7c3aed; }
+.lobby-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.lobby-btn:disabled:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); }
+.lobby-input {
+  padding: 12px 20px;
+  border: 2px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  border-radius: 12px;
+  font-size: 1.4rem;
+  text-align: center;
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  outline: none;
+  width: 180px;
+  font-weight: bold;
+}
+.lobby-input:focus { border-color: #7c3aed; }
+.lobby-input::placeholder { letter-spacing: 0; text-transform: none; font-size: 0.9rem; color: #666; font-weight: normal; }
+.room-code {
+  color: #7c3aed;
+  font-size: 2.5rem;
+  font-weight: bold;
+  letter-spacing: 10px;
+  background: rgba(124,58,237,0.1);
+  padding: 12px 32px;
+  border-radius: 12px;
+  border: 2px dashed rgba(124,58,237,0.3);
+}
+.waiting-msg { color: #fbbf24; font-size: 1rem; animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+.modal-overlay {
+  display: none; position: fixed; top: 0; left: 0;
+  width: 100vw; height: 100vh;
+  background: rgba(0,0,0,0.7);
+  z-index: 1001;
+  justify-content: center; align-items: center;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  background: linear-gradient(135deg, #1e1b4b, #0f0c29);
+  padding: 2rem;
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.1);
+  width: 360px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+}
+.modal h2 { color: #fff; font-size: 1.4rem; margin-bottom: 0.3rem; }
+.modal-btn {
+  display: flex; align-items: center; gap: 14px;
+  width: 100%; padding: 14px 20px;
+  border: 2px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  color: #fff;
+  border-radius: 14px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.3s;
+  margin-bottom: 10px;
+  text-align: left;
+}
+.modal-btn:hover { background: rgba(124,58,237,0.2); border-color: #7c3aed; transform: translateX(4px); }
+.modal-btn .modal-icon { font-size: 1.8rem; min-width: 36px; }
+.modal-btn .modal-label { display: flex; flex-direction: column; line-height: 1.3; }
+.modal-btn .modal-label small { font-size: 0.75rem; color: #888; font-weight: normal; }
+.game-container { text-align: center; }
+.back-btn {
+  color: #888;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: color 0.2s;
+  background: none; border: none;
+  text-decoration: underline;
+  font-family: inherit;
+}
+.back-btn:hover { color: #fff; }
+#celebration-canvas {
+  position: fixed; top: 0; left: 0;
+  width: 100vw; height: 100vh;
+  pointer-events: none; z-index: 999;
+}
+.celebration-flash {
+  position: fixed; top: 0; left: 0;
+  width: 100vw; height: 100vh;
+  background: white;
+  z-index: 998;
+  animation: flashAnim 0.6s ease-out forwards;
+  pointer-events: none;
+}
+@keyframes flashAnim {
+  0% { opacity: 0.6; }
+  100% { opacity: 0; }
+}
+.celebration-text {
+  position: fixed; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
+  font-size: 4rem;
+  font-weight: bold;
+  pointer-events: none;
+  animation: popOut 1s ease-out forwards;
+  text-shadow: 0 0 40px currentColor;
+}
+@keyframes popOut {
+  0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+  30% { transform: translate(-50%, -50%) scale(1.3); opacity: 1; }
+  60% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+}
+</style>
+</head>
+<body>
+
+<!-- ========== MENU ========== -->
+<div id="menuScreen" class="screen active">
+  <h1>TIC-TAC-TOE</h1>
+  <p class="subtitle">Choose your mode</p>
+  <div class="menu-buttons">
+    <button class="menu-btn" onclick="startGame('friend')">
+      <span class="icon">👥</span>
+      <span class="label">Play with Friend <small>Pass & play on same device</small></span>
+    </button>
+    <button class="menu-btn" onclick="showDiffModal()">
+      <span class="icon">🤖</span>
+      <span class="label">Play with Computer <small>Challenge the AI</small></span>
+    </button>
+    <button class="menu-btn" onclick="showLobby()">
+      <span class="icon">🌐</span>
+      <span class="label">Play Online <small>VS someone over the internet</small></span>
+    </button>
+  </div>
+</div>
+
+<!-- ========== LOBBY ========== -->
+<div id="lobbyScreen" class="screen">
+  <button class="back-btn" onclick="backToMenu()">← Back to menu</button>
+  <h2>🌐 Play Online</h2>
+  <div class="lobby-options">
+    <button class="lobby-btn" id="btnCreateRoom">🏠 Create Room</button>
+    <button class="lobby-btn" id="btnJoinRoom">🔑 Join Room</button>
+    <button class="lobby-btn" id="btnRandom">🎲 Random</button>
+  </div>
+  <div id="lobbyStatus" style="color:#aaa;font-size:0.9rem;">Start by creating, joining, or finding a random match</div>
+  <div id="roomCodeArea" style="display:none;text-align:center;">
+    <p style="color:#888;margin-bottom:8px;">Share this 6-digit code with your friend:</p>
+    <div class="room-code" id="roomCodeDisplay"></div>
+    <p class="waiting-msg" id="waitingMsg">⏳ Waiting for opponent to join...</p>
+    <button class="btn btn-outline" id="btnCancelRoom" style="margin-top:8px;">Cancel</button>
+  </div>
+  <div id="joinArea" style="display:none;text-align:center;">
+    <p style="color:#888;margin-bottom:8px;">Enter 6-digit room code:</p>
+    <input class="lobby-input" id="joinInput" placeholder="000000" maxlength="6" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">
+    <button class="btn" id="btnJoinSubmit" style="margin-top:12px;display:block;width:100%;">Join</button>
+  </div>
+</div>
+
+<!-- ========== GAME ========== -->
+<canvas id="celebration-canvas"></canvas>
+
+<!-- ========== DIFFICULTY MODAL ========== -->
+<div id="diffModal" class="modal-overlay">
+  <div class="modal">
+    <h2>🤖 Select Difficulty</h2>
+    <p style="color:#aaa;margin-bottom:1.5rem;font-size:0.9rem;">Choose your opponent's skill level</p>
+    <button class="modal-btn" data-diff="easy">
+      <span class="modal-icon">🌱</span>
+      <span class="modal-label">Easy <small>Random moves, perfect for beginners</small></span>
+    </button>
+    <button class="modal-btn" data-diff="medium">
+      <span class="modal-icon">⚡</span>
+      <span class="modal-label">Medium <small>Mixes random and smart moves</small></span>
+    </button>
+    <button class="modal-btn" data-diff="hard">
+      <span class="modal-icon">🧠</span>
+      <span class="modal-label">Hard <small>Unbeatable Minimax AI</small></span>
+    </button>
+    <button class="btn btn-outline" onclick="closeDiffModal()" style="margin-top:1rem;width:100%;">Cancel</button>
+  </div>
+</div>
+
+<div id="gameScreen" class="screen">
+    <div class="game-container" style="background:transparent;box-shadow:none;border:none;backdrop-filter:none;">
+    <button class="back-btn" onclick="backToMenu()" style="margin-bottom:8px;">← Main Menu</button>
+    <h1 id="gameTitle">TIC-TAC-TOE</h1>
+    <div class="status" id="status">Player X's turn</div>
+    <div class="board" id="board"></div>
+    <button class="btn" id="restart">↻ New Game</button>
+    <div class="scoreboard">
+      <span>❌ <span class="score" id="scoreX">0</span></span>
+      <span>Draws <span class="score" id="scoreDraw">0</span></span>
+      <span>⭕ <span class="score" id="scoreO">0</span></span>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===================== SCREENS ===================== */
+const menuSc  = document.getElementById('menuScreen');
+const lobbySc = document.getElementById('lobbyScreen');
+const gameSc  = document.getElementById('gameScreen');
+
+function showScreen(s) {
+  [menuSc, lobbySc, gameSc].forEach(el => el.classList.remove('active'));
+  s.classList.add('active');
+}
+function showMenu() { showScreen(menuSc); }
+function showLobby() { showScreen(lobbySc); enableLobbyBtns(); resetLobbyUI(); lobbyStatus.textContent = 'Start by creating, joining, or finding a random match'; }
+
+/* ===================== GAME STATE ===================== */
+const boardEl = document.getElementById('board');
+const statusEl = document.getElementById('status');
+const restartBtn = document.getElementById('restart');
+const scoreXEl = document.getElementById('scoreX');
+const scoreOEl = document.getElementById('scoreO');
+const scoreDrawEl = document.getElementById('scoreDraw');
+const gameTitle = document.getElementById('gameTitle');
+
+let board = Array(9).fill(null);
+let currentPlayer = 'X';
+let gameOver = false;
+let mode = 'friend';
+let difficulty = 'easy';
+let scores = { X: 0, O: 0, draw: 0 };
+let onlineConn = null;
+let onlinePeer = null;
+let myRoomCode = null;
+let amIHost = false;
+let randomSearching = false;
+
+const winPatterns = [
+  [0,1,2],[3,4,5],[6,7,8],
+  [0,3,6],[1,4,7],[2,5,8],
+  [0,4,8],[2,4,6]
+];
+
+function checkWinner(b) {
+  for (const [a,bc,c] of winPatterns) {
+    if (b[a] && b[a] === b[bc] && b[a] === b[c]) return b[a];
+  }
+  return null;
+}
+function isDraw(b) { return b.every(c => c !== null); }
+
+function render() {
+  boardEl.innerHTML = '';
+  const winner = checkWinner(board);
+  for (let i = 0; i < 9; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    if (board[i]) cell.classList.add(board[i].toLowerCase());
+    if (board[i]) cell.textContent = board[i];
+    if (winner) {
+      for (const pat of winPatterns) {
+        if (pat.includes(i) && board[i] === winner) cell.classList.add('win');
+      }
+    }
+    if (gameOver || board[i]) cell.classList.add('disabled');
+    cell.addEventListener('click', () => handleClick(i));
+    boardEl.appendChild(cell);
+  }
+  updateStatus();
+}
+
+function updateStatus() {
+  const winner = checkWinner(board);
+  if (winner) {
+    statusEl.textContent = `🎉 Player ${winner} wins!`;
+  } else if (isDraw(board)) {
+    statusEl.textContent = "🤝 It's a draw!";
+  } else if (mode === 'online' && ((amIHost && currentPlayer === 'O') || (!amIHost && currentPlayer === 'X'))) {
+    statusEl.textContent = "⏳ Waiting for opponent's move...";
+  } else {
+    statusEl.textContent = `Player ${currentPlayer}'s turn`;
+  }
+}
+
+/* ===================== GAME ACTIONS ===================== */
+function handleClick(i) {
+  if (gameOver || board[i]) return;
+  if (mode === 'computer' && currentPlayer === 'O') return;
+  if (mode === 'online') {
+    if ((amIHost && currentPlayer !== 'X') || (!amIHost && currentPlayer !== 'O')) return;
+  }
+
+  board[i] = currentPlayer;
+  if (mode === 'online' && onlineConn && onlineConn.open) {
+    onlineConn.send({ type: 'move', index: i, player: currentPlayer });
+  }
+  afterMove();
+}
+
+function afterMove() {
+  const winner = checkWinner(board);
+  if (winner || isDraw(board)) {
+    gameOver = true;
+    if (winner) { scores[winner]++; celebrate(winner); }
+    else { scores.draw++; celebrate(null); }
+    updateScoreboard();
+    render();
+    return;
+  }
+  currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+  render();
+
+  if (mode === 'computer' && currentPlayer === 'O' && !gameOver) {
+    setTimeout(computerMove, 400);
+  }
+}
+
+function computerMove() {
+  if (gameOver) return;
+
+  let moveIndex;
+  const available = board.map((v,i) => v === null ? i : null).filter(v => v !== null);
+
+  if (difficulty === 'easy') {
+    moveIndex = available[Math.floor(Math.random() * available.length)];
+  } else if (difficulty === 'medium') {
+    if (Math.random() < 0.4) {
+      moveIndex = available[Math.floor(Math.random() * available.length)];
+    } else {
+      moveIndex = minimax(board, 'O').index;
+    }
+  } else {
+    moveIndex = minimax(board, 'O').index;
+  }
+
+  if (moveIndex === undefined) return;
+  board[moveIndex] = 'O';
+  const winner = checkWinner(board);
+  if (winner || isDraw(board)) {
+    gameOver = true;
+    if (winner) scores[winner]++;
+    else scores.draw++;
+    updateScoreboard();
+    render();
+    return;
+  }
+  currentPlayer = 'X';
+  render();
+}
+
+function minimax(newBoard, player) {
+  const winner = checkWinner(newBoard);
+  if (winner === 'X') return { score: -10 };
+  if (winner === 'O') return { score: 10 };
+  if (isDraw(newBoard)) return { score: 0 };
+
+  const moves = [];
+  for (let i = 0; i < 9; i++) {
+    if (newBoard[i] !== null) continue;
+    const move = { index: i };
+    newBoard[i] = player;
+    const result = minimax(newBoard, player === 'O' ? 'X' : 'O');
+    move.score = result.score;
+    newBoard[i] = null;
+    moves.push(move);
+  }
+
+  let bestMove = null;
+  if (player === 'O') {
+    let bestScore = -Infinity;
+    for (const m of moves) { if (m.score > bestScore) { bestScore = m.score; bestMove = m; } }
+  } else {
+    let bestScore = Infinity;
+    for (const m of moves) { if (m.score < bestScore) { bestScore = m.score; bestMove = m; } }
+  }
+  return bestMove;
+}
+
+function updateScoreboard() {
+  scoreXEl.textContent = scores.X;
+  scoreOEl.textContent = scores.O;
+  scoreDrawEl.textContent = scores.draw;
+}
+
+function resetGame() {
+  board = Array(9).fill(null);
+  currentPlayer = 'X';
+  gameOver = false;
+  render();
+}
+
+function resetScores() {
+  scores = { X: 0, O: 0, draw: 0 };
+  updateScoreboard();
+}
+
+/* ===================== START GAME ===================== */
+function startGame(m, host = true) {
+  mode = m;
+  amIHost = host;
+  showScreen(gameSc);
+
+  const labels = { friend: '👥 vs Friend', computer: '🤖 vs Computer', online: '🌐 Online' };
+  gameTitle.textContent = labels[mode] || '';
+
+  
+
+  if (mode === 'online') {
+    currentPlayer = amIHost ? 'X' : 'O';
+    gameOver = false;
+    board = Array(9).fill(null);
+    render();
+  } else {
+    resetScores();
+    resetGame();
+  }
+}
+
+function backToMenu() {
+  cleanupOnline();
+  showMenu();
+}
+
+function cleanupOnline() {
+  randomSearching = false;
+  if (onlineConn) { try { onlineConn.close(); } catch(e) {} onlineConn = null; }
+  if (onlinePeer) { try { onlinePeer.destroy(); } catch(e) {} onlinePeer = null; }
+  myRoomCode = null;
+}
+
+/* ===================== ONLINE LOBBY ===================== */
+const lobbyStatus = document.getElementById('lobbyStatus');
+const roomCodeArea = document.getElementById('roomCodeArea');
+const roomCodeDisplay = document.getElementById('roomCodeDisplay');
+const waitingMsg = document.getElementById('waitingMsg');
+const joinArea = document.getElementById('joinArea');
+const joinInput = document.getElementById('joinInput');
+const btnCreateRoom = document.getElementById('btnCreateRoom');
+const btnJoinRoom = document.getElementById('btnJoinRoom');
+const btnRandom = document.getElementById('btnRandom');
+const btnCancelRoom = document.getElementById('btnCancelRoom');
+const btnJoinSubmit = document.getElementById('btnJoinSubmit');
+
+function resetLobbyUI() {
+  roomCodeArea.style.display = 'none';
+  joinArea.style.display = 'none';
+  waitingMsg.style.display = 'block';
+}
+
+function enableLobbyBtns() {
+  btnCreateRoom.disabled = false;
+  btnJoinRoom.disabled = false;
+  btnRandom.disabled = false;
+}
+function disableLobbyBtns() {
+  btnCreateRoom.disabled = true;
+  btnJoinRoom.disabled = true;
+  btnRandom.disabled = true;
+}
+
+/* ---- Generate 6-char code ---- */
+function generateRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no I,O,0,1 to avoid confusion
+  let code = '';
+  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
+/* ---- Create Room ---- */
+btnCreateRoom.addEventListener('click', createRoom);
+btnCancelRoom.addEventListener('click', cancelRoom);
+
+function createRoom() {
+  cleanupOnline();
+  resetLobbyUI();
+  disableLobbyBtns();
+  lobbyStatus.textContent = '⏳ Creating room...';
+
+  const code = generateRoomCode();
+  onlinePeer = new Peer(code, { debug: 0 });
+
+  onlinePeer.on('open', (id) => {
+    myRoomCode = id;
+    roomCodeDisplay.textContent = myRoomCode;
+    roomCodeArea.style.display = 'block';
+    lobbyStatus.textContent = '✅ Room created! Share the 6-digit code above.';
+  });
+
+  onlinePeer.on('connection', (conn) => {
+    onlineConn = conn;
+    onlineConn.on('data', (data) => { handleOnlineData(data); });
+    onlineConn.on('close', () => {
+      if (!gameOver && mode === 'online' && !randomSearching) {
+        lobbyStatus.textContent = '❌ Opponent disconnected.';
+        statusEl.textContent = '❌ Opponent disconnected.';
+      }
+      onlineConn = null;
+    });
+    lobbyStatus.textContent = '✅ Opponent joined! Starting game...';
+    waitingMsg.style.display = 'none';
+    setTimeout(() => startGame('online', true), 500);
+  });
+
+  onlinePeer.on('error', (err) => {
+    if (err.type === 'unavailable-id') {
+      // code taken, try again
+      if (onlinePeer) onlinePeer.destroy();
+      createRoom();
+    } else {
+      lobbyStatus.textContent = '❌ Error: ' + err.type;
+      roomCodeArea.style.display = 'none';
+      enableLobbyBtns();
+    }
+  });
+}
+
+function cancelRoom() {
+  cleanupOnline();
+  resetLobbyUI();
+  enableLobbyBtns();
+  lobbyStatus.textContent = 'Room cancelled. Create, join, or find random.';
+}
+
+/* ---- Join Room ---- */
+btnJoinRoom.addEventListener('click', () => {
+  cleanupOnline();
+  resetLobbyUI();
+  joinArea.style.display = 'block';
+  lobbyStatus.textContent = 'Enter the 6-digit room code from your friend.';
+  joinInput.value = '';
+  setTimeout(() => joinInput.focus(), 100);
+});
+
+btnJoinSubmit.addEventListener('click', joinRoom);
+joinInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') joinRoom(); });
+
+function joinRoom() {
+  const code = joinInput.value.trim().toUpperCase();
+  if (code.length !== 6) { lobbyStatus.textContent = '⚠️ Code must be exactly 6 characters.'; return; }
+  disableLobbyBtns();
+  lobbyStatus.textContent = '⏳ Connecting...';
+
+  onlinePeer = new Peer(undefined, { debug: 0 });
+  onlinePeer.on('open', () => {
+    const conn = onlinePeer.connect(code, { reliable: true });
+    onlineConn = conn;
+
+    const timeout = setTimeout(() => {
+      if (!conn.open) {
+        lobbyStatus.textContent = '❌ Connection timed out. Check the code.';
+        cleanupOnline();
+        enableLobbyBtns();
+      }
+    }, 8000);
+
+    conn.on('open', () => {
+      clearTimeout(timeout);
+      lobbyStatus.textContent = '✅ Connected! Starting game...';
+      conn.on('data', (data) => { handleOnlineData(data); });
+      conn.on('close', () => {
+        if (!gameOver && mode === 'online' && !randomSearching) {
+          lobbyStatus.textContent = '❌ Opponent disconnected.';
+          statusEl.textContent = '❌ Opponent disconnected.';
+        }
+        onlineConn = null;
+      });
+      setTimeout(() => startGame('online', false), 500);
+    });
+
+    conn.on('error', (err) => {
+      clearTimeout(timeout);
+      lobbyStatus.textContent = '❌ Connection failed. Check the room code.';
+      cleanupOnline();
+      enableLobbyBtns();
+    });
+  });
+
+  onlinePeer.on('error', (err) => {
+    lobbyStatus.textContent = '❌ Error: ' + err.type;
+    cleanupOnline();
+    enableLobbyBtns();
+  });
+}
+
+/* ---- Random Match ---- */
+btnRandom.addEventListener('click', findRandomMatch);
+const RANDOM_PREFIX = 'R_';
+
+function findRandomMatch() {
+  cleanupOnline();
+  resetLobbyUI();
+  disableLobbyBtns();
+  randomSearching = true;
+  lobbyStatus.textContent = '🔍 Searching for an opponent...';
+  tryRandomConnect();
+}
+
+function tryRandomConnect() {
+  if (!randomSearching) return;
+
+  // Try connecting to a peer that's waiting
+  onlinePeer = new Peer(undefined, { debug: 0 });
+
+  onlinePeer.on('open', () => {
+    // Try to find waiting players by trying common waiting IDs
+    // We'll connect to a fixed known lobby, or create one if none exists
+    tryConnectToLobby();
+  });
+
+  onlinePeer.on('error', () => {
+    // retry
+    if (onlinePeer) onlinePeer.destroy();
+    if (randomSearching) setTimeout(tryRandomConnect, 1500);
+  });
+}
+
+function tryConnectToLobby() {
+  const lobbyId = RANDOM_PREFIX + 'LOBBY';
+  const conn = onlinePeer.connect(lobbyId, { reliable: true });
+  let responded = false;
+
+  const timeout = setTimeout(() => {
+    if (!responded) {
+      // Nobody waiting, become the lobby host
+      conn.close();
+      if (onlinePeer) onlinePeer.destroy();
+      becomeLobbyHost();
+    }
+  }, 2000);
+
+  conn.on('open', () => {
+    responded = true;
+    clearTimeout(timeout);
+    // Connected to a waiting host!
+    onlineConn = conn;
+    lobbyStatus.textContent = '✅ Match found! Starting game...';
+    conn.on('data', (data) => { handleOnlineData(data); });
+    conn.on('close', () => {
+      if (!gameOver && mode === 'online' && randomSearching) {
+        lobbyStatus.textContent = '❌ Opponent disconnected.';
+        statusEl.textContent = '❌ Opponent disconnected.';
+        randomSearching = false;
+        enableLobbyBtns();
+      }
+      onlineConn = null;
+    });
+    setTimeout(() => { randomSearching = false; enableLobbyBtns(); startGame('online', false); }, 500);
+  });
+
+  conn.on('error', () => {
+    clearTimeout(timeout);
+    if (!responded) {
+      if (onlinePeer) onlinePeer.destroy();
+      becomeLobbyHost();
+    }
+  });
+}
+
+function becomeLobbyHost() {
+  if (!randomSearching) return;
+  lobbyStatus.textContent = '⏳ Waiting for a random opponent...';
+
+  onlinePeer = new Peer(RANDOM_PREFIX + 'LOBBY', { debug: 0 });
+
+  onlinePeer.on('open', () => {
+    // Waiting for someone to connect
+  });
+
+  onlinePeer.on('connection', (conn) => {
+    onlineConn = conn;
+    lobbyStatus.textContent = '✅ Match found! Starting game...';
+    conn.on('data', (data) => { handleOnlineData(data); });
+    conn.on('close', () => {
+      if (!gameOver && mode === 'online' && randomSearching) {
+        lobbyStatus.textContent = '❌ Opponent disconnected.';
+        statusEl.textContent = '❌ Opponent disconnected.';
+      }
+      onlineConn = null;
+    });
+    setTimeout(() => { randomSearching = false; enableLobbyBtns(); startGame('online', true); }, 500);
+  });
+
+  onlinePeer.on('error', (err) => {
+    if (err.type === 'unavailable-id') {
+      // Someone else is host, try connecting again
+      if (onlinePeer) onlinePeer.destroy();
+      if (randomSearching) {
+        setTimeout(() => {
+          if (onlinePeer) onlinePeer.destroy();
+          tryRandomConnect();
+        }, 1000);
+      }
+    } else {
+      lobbyStatus.textContent = '❌ Error: ' + err.type;
+      if (randomSearching) setTimeout(tryRandomConnect, 2000);
+    }
+  });
+}
+
+/* ---- Handle incoming online data ---- */
+function handleOnlineData(data) {
+  if (data.type === 'move') {
+    if (board[data.index] === null && !gameOver) {
+      board[data.index] = data.player;
+      afterMove();
+    }
+  }
+}
+
+/* ===================== INIT ===================== */
+/* ===================== DIFFICULTY MODAL ===================== */
+const diffModal = document.getElementById('diffModal');
+const modalBtns = diffModal.querySelectorAll('.modal-btn');
+
+function showDiffModal() { diffModal.classList.add('show'); }
+function closeDiffModal() { diffModal.classList.remove('show'); }
+
+modalBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    difficulty = btn.dataset.diff;
+    closeDiffModal();
+    startGame('computer');
+  });
+});
+
+diffModal.addEventListener('click', (e) => {
+  if (e.target === diffModal) closeDiffModal();
+});
+
+restartBtn.addEventListener('click', resetGame);
+
+/* ===================== CELEBRATION ===================== */
+const canvas = document.getElementById('celebration-canvas');
+const ctx = canvas.getContext('2d');
+let particles = [];
+let celebrationActive = false;
+let animFrame = null;
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+class Particle {
+  constructor() {
+    this.reset();
+  }
+  reset() {
+    this.x = Math.random() * canvas.width;
+    this.y = -20;
+    this.size = Math.random() * 10 + 5;
+    this.speedY = Math.random() * 3 + 2;
+    this.speedX = (Math.random() - 0.5) * 4;
+    this.rotation = Math.random() * 360;
+    this.rotSpeed = (Math.random() - 0.5) * 10;
+    this.opacity = 1;
+    this.color = ['#7c3aed','#60a5fa','#f472b6','#22c55e','#fbbf24','#ef4444','#a78bfa','#34d399'][Math.floor(Math.random() * 8)];
+    this.shape = Math.random() > 0.5 ? 'rect' : 'circle';
+    this.gravity = 0.05;
+    this.drift = (Math.random() - 0.5) * 0.5;
+  }
+  update() {
+    this.speedY += this.gravity;
+    this.y += this.speedY;
+    this.x += this.speedX + this.drift;
+    this.rotation += this.rotSpeed;
+    this.opacity -= 0.002;
+  }
+  draw() {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.rotation * Math.PI / 180);
+    ctx.globalAlpha = Math.max(0, this.opacity);
+    ctx.fillStyle = this.color;
+    if (this.shape === 'rect') {
+      ctx.fillRect(-this.size/2, -this.size/4, this.size, this.size/2);
+    } else {
+      ctx.beginPath();
+      ctx.arc(0, 0, this.size/2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+function burstConfetti(count = 200) {
+  for (let i = 0; i < count; i++) {
+    const p = new Particle();
+    p.x = canvas.width / 2 + (Math.random() - 0.5) * canvas.width * 0.6;
+    p.y = canvas.height / 2;
+    p.speedY = (Math.random() - 0.5) * 8 - 6;
+    p.speedX = (Math.random() - 0.5) * 10;
+    particles.push(p);
+  }
+}
+
+function addStreamerText(text, color = '#fff') {
+  for (let i = 0; i < 60; i++) {
+    const p = new Particle();
+    p.x = canvas.width / 2 + (Math.random() - 0.5) * 300;
+    p.y = canvas.height / 2 + (Math.random() - 0.5) * 200;
+    p.speedY = (Math.random() - 0.5) * 2;
+    p.speedX = (Math.random() - 0.5) * 2;
+    p.size = Math.random() * 6 + 3;
+    p.color = color;
+    p.opacity = 1;
+    particles.push(p);
+  }
+}
+
+function celebrate(winner) {
+  if (celebrationActive) return;
+  celebrationActive = true;
+  particles = [];
+
+  const color = winner === 'X' ? '#60a5fa' : winner === 'O' ? '#f472b6' : '#fbbf24';
+
+  // Flash
+  const flash = document.createElement('div');
+  flash.className = 'celebration-flash';
+  document.body.appendChild(flash);
+  setTimeout(() => flash.remove(), 700);
+
+  // Big text
+  const text = document.createElement('div');
+  text.className = 'celebration-text';
+  text.style.color = color;
+  text.textContent = winner ? `🎉 ${winner} WINS! 🎉` : '🤝 DRAW!';
+  document.body.appendChild(text);
+  setTimeout(() => text.remove(), 1200);
+
+  burstConfetti(300);
+  addStreamerText('', color);
+
+  setTimeout(() => burstConfetti(200), 600);
+  setTimeout(() => burstConfetti(150), 1200);
+
+  if (!animFrame) animateCelebration();
+
+  setTimeout(() => { celebrationActive = false; }, 4000);
+}
+
+function animateCelebration() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  let alive = false;
+  for (const p of particles) {
+    p.update();
+    p.draw();
+    if (p.opacity > 0 && p.y < canvas.height + 50) alive = true;
+  }
+  particles = particles.filter(p => p.opacity > 0 && p.y < canvas.height + 50);
+
+  if (alive || celebrationActive) {
+    animFrame = requestAnimationFrame(animateCelebration);
+  } else {
+    animFrame = null;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
+</script>
+</body>
+</html>
