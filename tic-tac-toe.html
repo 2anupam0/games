@@ -429,6 +429,7 @@ let onlinePeer = null;
 let myRoomCode = null;
 let amIHost = false;
 let randomSearching = false;
+let opponentLeft = false;
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
@@ -592,10 +593,13 @@ function updateScoreboard() {
 }
 
 function resetGame() {
+  opponentLeft = false; restartBtn.textContent = '↻ New Game';
+  if (mode === 'online' && onlineConn) { try { onlineConn.send({ type: 'new_game' }); } catch(e) {} }
   board = Array(9).fill(null);
-  currentPlayer = 'X';
+  currentPlayer = mode === 'online' ? (amIHost ? 'X' : 'O') : 'X';
   gameOver = false;
   render();
+  statusEl.textContent = currentPlayer === 'X' ? "Player X's turn" : "Player O's turn";
 }
 
 function resetScores() {
@@ -628,10 +632,13 @@ function backToMenu() { showMenu(); }
 function backFromLobby() { cleanupOnline(); showMenu(); }
 
 function cleanupOnline() {
+  opponentLeft = false; restartBtn.textContent = '↻ New Game';
   randomSearching = false;
   if (onlineConn) { try { onlineConn.close(); } catch(e) {} onlineConn = null; }
   if (onlinePeer) { try { onlinePeer.destroy(); } catch(e) {} onlinePeer = null; }
   myRoomCode = null;
+  localStorage.removeItem('ttt_room');
+  localStorage.removeItem('ttt_ishost');
 }
 
 /* ===================== ONLINE LOBBY ===================== */
@@ -687,6 +694,8 @@ function createRoom() {
 
   onlinePeer.on('open', (id) => {
     myRoomCode = id;
+    localStorage.setItem('ttt_room', id);
+    localStorage.setItem('ttt_ishost', 'true');
     roomCodeDisplay.textContent = myRoomCode;
     roomCodeArea.style.display = 'block';
     lobbyStatus.textContent = '✅ Room created! Share the 6-digit code above.';
@@ -696,11 +705,13 @@ function createRoom() {
     onlineConn = conn;
     onlineConn.on('data', (data) => { handleOnlineData(data); });
     onlineConn.on('close', () => {
-      if (!gameOver && mode === 'online' && !randomSearching) {
+      onlineConn = null;
+      if (!gameOver && mode === 'online' && gameSc.style.display !== 'none') {
         lobbyStatus.textContent = '❌ Opponent disconnected.';
         statusEl.textContent = '❌ Opponent disconnected.';
+        opponentLeft = true;
+        restartBtn.textContent = '↻ Opponent left — New Game';
       }
-      onlineConn = null;
     });
     lobbyStatus.textContent = '✅ Opponent joined! Starting game...';
     waitingMsg.style.display = 'none';
@@ -774,14 +785,18 @@ function joinRoom() {
       conn.on('open', () => {
         if (!stillJoining()) { cleanupOnline(); enableLobbyBtns(); return; }
         clearTimeout(timeout);
+        localStorage.setItem('ttt_room', code);
+        localStorage.setItem('ttt_ishost', 'false');
         lobbyStatus.textContent = '✅ Connected! Starting game...';
         conn.on('data', (data) => { handleOnlineData(data); });
         conn.on('close', () => {
-          if (!gameOver && mode === 'online' && !randomSearching) {
+          onlineConn = null;
+          if (!gameOver && mode === 'online' && gameSc.style.display !== 'none') {
             lobbyStatus.textContent = '❌ Opponent disconnected.';
             statusEl.textContent = '❌ Opponent disconnected.';
+            opponentLeft = true;
+            restartBtn.textContent = '↻ Opponent left — New Game';
           }
-          onlineConn = null;
         });
         setTimeout(() => startGame('online', false), 500);
       });
@@ -845,13 +860,15 @@ function tryConnectToLobby() {
     lobbyStatus.textContent = '✅ Match found! Starting game...';
     conn.on('data', (data) => { handleOnlineData(data); });
     conn.on('close', () => {
-      if (!gameOver && mode === 'online' && randomSearching) {
+      onlineConn = null;
+      if (!gameOver && mode === 'online' && !randomSearching && gameSc.style.display !== 'none') {
         lobbyStatus.textContent = '❌ Opponent disconnected.';
         statusEl.textContent = '❌ Opponent disconnected.';
-        randomSearching = false;
-        enableLobbyBtns();
+        opponentLeft = true;
+        restartBtn.textContent = '↻ Opponent left — New Game';
+      } else if (randomSearching) {
+        randomSearching = false; enableLobbyBtns();
       }
-      onlineConn = null;
     });
     setTimeout(() => { randomSearching = false; enableLobbyBtns(); startGame('online', false); }, 500);
   });
@@ -880,11 +897,13 @@ function becomeLobbyHost() {
     lobbyStatus.textContent = '✅ Match found! Starting game...';
     conn.on('data', (data) => { handleOnlineData(data); });
     conn.on('close', () => {
-      if (!gameOver && mode === 'online' && randomSearching) {
+      onlineConn = null;
+      if (!gameOver && mode === 'online' && gameSc.style.display !== 'none') {
         lobbyStatus.textContent = '❌ Opponent disconnected.';
         statusEl.textContent = '❌ Opponent disconnected.';
+        opponentLeft = true;
+        restartBtn.textContent = '↻ Opponent left — New Game';
       }
-      onlineConn = null;
     });
     setTimeout(() => { randomSearching = false; enableLobbyBtns(); startGame('online', true); }, 500);
   });
@@ -908,6 +927,13 @@ function becomeLobbyHost() {
 
 /* ---- Handle incoming online data ---- */
 function handleOnlineData(data) {
+  if (data.type === 'new_game') {
+    board = Array(9).fill(null);
+    currentPlayer = amIHost ? 'X' : 'O';
+    gameOver = false; render();
+    statusEl.textContent = currentPlayer === 'X' ? "Player X's turn" : "Player O's turn";
+    return;
+  }
   if (data.type === 'move') {
     if (board[data.index] === null && !gameOver) {
       board[data.index] = data.player;
@@ -936,7 +962,10 @@ diffModal.addEventListener('click', (e) => {
   if (e.target === diffModal) closeDiffModal();
 });
 
-restartBtn.addEventListener('click', resetGame);
+restartBtn.addEventListener('click', () => {
+  if (opponentLeft) { opponentLeft = false; restartBtn.textContent = '↻ New Game'; cleanupOnline(); showMenu(); return; }
+  resetGame();
+});
 
 /* ===================== CELEBRATION ===================== */
 const canvas = document.getElementById('celebration-canvas');
@@ -1063,6 +1092,15 @@ function celebrate(winner, gameMode) {
 
   setTimeout(() => { celebrationActive = false; }, 4000);
 }
+
+/* ==================== RECONNECT ==================== */
+(function initReconnect() {
+  const savedRoom = localStorage.getItem('ttt_room');
+  const savedHost = localStorage.getItem('ttt_ishost');
+  if (savedRoom) {
+    lobbyStatus.textContent = `🔄 Rejoin room ${savedRoom}? Create or join a new game to dismiss.`;
+  }
+})();
 
 function animateCelebration() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);

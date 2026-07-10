@@ -691,7 +691,7 @@ let legalSqs = [];
 let moveHistory = [];
 let capturedPieces = {w:[],b:[]};
 let scores = { w: 0, b: 0, draw: 0 };
-let onlineConn = null, onlinePeer = null, myRoomCode = null, randomSearching = false;
+let onlineConn = null, onlinePeer = null, myRoomCode = null, randomSearching = false, opponentLeft = false;
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
@@ -1007,15 +1007,22 @@ function startGame(m, host=true) {
   render();
 }
 function resetGame() {
-  board=initBoard(); currentColor='w'; gameOver=false; selectedSq=null; legalSqs=[]; moveHistory=[];
+  opponentLeft=false; restartBtn.textContent='↻ New Game';
+  if(mode==='online'&&onlineConn){try{onlineConn.send({type:'new_game'})}catch(e){}}
+  board=initBoard(); currentColor=mode==='online'?(amIHost?'w':'b'):'w';
+  gameOver=false; selectedSq=null; legalSqs=[]; moveHistory=[];
   capturedPieces={w:[],b:[]}; gameState={castling:{K:true,Q:true,k:true,q:true},ep:null};
   render();
+  statusEl.textContent=currentColor==='w'?"White's turn":"Black's turn";
 }
 function backToMenu() { showMenu(); }
 function backFromLobby() { cleanupOnline(); showMenu(); }
 
 btnUndo.addEventListener('click',undoMove);
-restartBtn.addEventListener('click',resetGame);
+restartBtn.addEventListener('click',()=>{
+  if(opponentLeft){opponentLeft=false;restartBtn.textContent='↻ New Game';cleanupOnline();showMenu();return}
+  resetGame();
+});
 
 /* ==================== DIFFICULTY MODAL ==================== */
 document.getElementById('btnComputer').addEventListener('click',()=>diffModal.classList.add('show'));
@@ -1031,9 +1038,23 @@ function showLobby(){showScreen(lobbySc);enableLobbyBtns();resetLobbyUI();lobbyS
 function resetLobbyUI(){roomCodeArea.style.display='none';joinArea.style.display='none';waitingMsg.style.display='block'}
 function enableLobbyBtns(){btnCreate.disabled=false;btnJoin.disabled=false;btnRand.disabled=false}
 function disableLobbyBtns(){btnCreate.disabled=true;btnJoin.disabled=true;btnRand.disabled=true}
-function cleanupOnline(){randomSearching=false;if(onlineConn){try{onlineConn.close()}catch(e){}onlineConn=null}if(onlinePeer){try{onlinePeer.destroy()}catch(e){}onlinePeer=null}myRoomCode=null}
+function cleanupOnline(){
+  opponentLeft=false;restartBtn.textContent='↻ New Game';
+  randomSearching=false;
+  if(onlineConn){try{onlineConn.close()}catch(e){}onlineConn=null}
+  if(onlinePeer){try{onlinePeer.destroy()}catch(e){}onlinePeer=null}
+  myRoomCode=null;
+  localStorage.removeItem('chess_room');localStorage.removeItem('chess_ishost');
+}
 function genCode(){const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let r='';for(let i=0;i<6;i++)r+=c[Math.floor(Math.random()*c.length)];return r}
 function handleOnlineData(data){
+  if(data.type==='new_game'){
+    board=initBoard(); currentColor=mode==='online'?(amIHost?'w':'b'):'w';
+    gameOver=false; selectedSq=null; legalSqs=[]; moveHistory=[];
+    capturedPieces={w:[],b:[]}; gameState={castling:{K:true,Q:true,k:true,q:true},ep:null};
+    render(); statusEl.textContent=currentColor==='w'?"White's turn":"Black's turn";
+    return;
+  }
   if(data.type==='move'){
     const move={from:data.from,to:data.to,promo:data.promo,castle:data.castle,ep:data.ep,double:data.double};
     const captured=board[move.to];if(captured)capturedPieces[enemyColor(currentColor)].push(captured);
@@ -1048,10 +1069,10 @@ btnCreate.addEventListener('click',()=>{
   cleanupOnline();resetLobbyUI();disableLobbyBtns();lobbyStatus.textContent='⏳ Creating room...';
   const code=genCode();
   onlinePeer=newPeer(code,{debug:0});
-  onlinePeer.on('open',(id)=>{myRoomCode=id;roomCodeDisplay.textContent=myRoomCode;roomCodeArea.style.display='block';lobbyStatus.textContent='✅ Room created! Share the 6-digit code above.'});
+   onlinePeer.on('open',(id)=>{myRoomCode=id;localStorage.setItem('chess_room',id);localStorage.setItem('chess_ishost','true');roomCodeDisplay.textContent=myRoomCode;roomCodeArea.style.display='block';lobbyStatus.textContent='✅ Room created! Share the 6-digit code above.'});
   onlinePeer.on('connection',(conn)=>{
     onlineConn=conn;conn.on('data',(d)=>handleOnlineData(d));
-    conn.on('close',()=>{if(!gameOver&&mode==='online'){lobbyStatus.textContent='❌ Opponent disconnected.';statusEl.textContent='❌ Opponent disconnected.'}onlineConn=null});
+     conn.on('close',()=>{onlineConn=null;if(!gameOver&&mode==='online'&&gameSc.style.display!=='none'){lobbyStatus.textContent='❌ Opponent disconnected.';statusEl.textContent='❌ Opponent disconnected.';opponentLeft=true;restartBtn.textContent='↻ Opponent left — New Game'}});
     lobbyStatus.textContent='✅ Opponent joined! Starting game...';waitingMsg.style.display='none';
     setTimeout(()=>startGame('online',true),500);
   });
@@ -1086,7 +1107,7 @@ function joinRoomFn(){
       if(!stillJoining()){cleanupOnline();enableLobbyBtns();return}
       const conn=onlinePeer.connect(code,{reliable:true});onlineConn=conn;
     const t=setTimeout(()=>{if(stillJoining()&&!conn.open)retryJoinFn()},30000);
-    conn.on('open',()=>{clearTimeout(t);lobbyStatus.textContent='✅ Connected! Starting game...';conn.on('data',(d)=>handleOnlineData(d));conn.on('close',()=>{if(!gameOver&&mode==='online'){lobbyStatus.textContent='❌ Opponent disconnected.';statusEl.textContent='❌ Opponent disconnected.'}onlineConn=null});setTimeout(()=>startGame('online',false),500)});
+    conn.on('open',()=>{clearTimeout(t);localStorage.setItem('chess_room',code);localStorage.setItem('chess_ishost','false');lobbyStatus.textContent='✅ Connected! Starting game...';conn.on('data',(d)=>handleOnlineData(d));conn.on('close',()=>{onlineConn=null;if(!gameOver&&mode==='online'&&gameSc.style.display!=='none'){lobbyStatus.textContent='❌ Opponent disconnected.';statusEl.textContent='❌ Opponent disconnected.';opponentLeft=true;restartBtn.textContent='↻ Opponent left — New Game'}});setTimeout(()=>startGame('online',false),500)});
     conn.on('error',()=>{if(stillJoining()){clearTimeout(t);retryJoinFn()}});
   });
   onlinePeer.on('error',()=>{if(stillJoining())retryJoinFn()});
@@ -1103,7 +1124,7 @@ function tryRandomConnect(){
   onlinePeer.on('open',()=>{
     const lobbyId=RANDOM_PREFIX+'LOBBY';const conn=onlinePeer.connect(lobbyId,{reliable:true});let responded=false;
     const t=setTimeout(()=>{if(!responded){conn.close();if(onlinePeer)onlinePeer.destroy();becomeLobbyHost()}},2000);
-    conn.on('open',()=>{responded=true;clearTimeout(t);onlineConn=conn;lobbyStatus.textContent='✅ Match found! Starting game...';conn.on('data',(d)=>handleOnlineData(d));conn.on('close',()=>{if(!gameOver&&mode==='online'){lobbyStatus.textContent='❌ Opponent disconnected.';statusEl.textContent='❌ Opponent disconnected.'}onlineConn=null});setTimeout(()=>{randomSearching=false;enableLobbyBtns();startGame('online',false)},500)});
+    conn.on('open',()=>{responded=true;clearTimeout(t);onlineConn=conn;lobbyStatus.textContent='✅ Match found! Starting game...';conn.on('data',(d)=>handleOnlineData(d));conn.on('close',()=>{onlineConn=null;if(!gameOver&&mode==='online'&&gameSc.style.display!=='none'){lobbyStatus.textContent='❌ Opponent disconnected.';statusEl.textContent='❌ Opponent disconnected.';opponentLeft=true;restartBtn.textContent='↻ Opponent left — New Game'}});setTimeout(()=>{randomSearching=false;enableLobbyBtns();startGame('online',false)},500)});
     conn.on('error',()=>{clearTimeout(t);if(!responded){if(onlinePeer)onlinePeer.destroy();becomeLobbyHost()}});
   });
   onlinePeer.on('error',()=>{if(onlinePeer)onlinePeer.destroy();if(randomSearching)setTimeout(tryRandomConnect,1500)});
@@ -1111,9 +1132,11 @@ function tryRandomConnect(){
 function becomeLobbyHost(){
   if(!randomSearching)return;lobbyStatus.textContent='⏳ Waiting for a random opponent...';
   onlinePeer=newPeer(RANDOM_PREFIX+'LOBBY',{debug:0});
-  onlinePeer.on('connection',(conn)=>{onlineConn=conn;lobbyStatus.textContent='✅ Match found! Starting game...';conn.on('data',(d)=>handleOnlineData(d));conn.on('close',()=>{if(!gameOver&&mode==='online'){lobbyStatus.textContent='❌ Opponent disconnected.';statusEl.textContent='❌ Opponent disconnected.'}onlineConn=null});setTimeout(()=>{randomSearching=false;enableLobbyBtns();startGame('online',true)},500)});
+  onlinePeer.on('connection',(conn)=>{onlineConn=conn;lobbyStatus.textContent='✅ Match found! Starting game...';conn.on('data',(d)=>handleOnlineData(d));conn.on('close',()=>{onlineConn=null;if(!gameOver&&mode==='online'&&gameSc.style.display!=='none'){lobbyStatus.textContent='❌ Opponent disconnected.';statusEl.textContent='❌ Opponent disconnected.';opponentLeft=true;restartBtn.textContent='↻ Opponent left — New Game'}});setTimeout(()=>{randomSearching=false;enableLobbyBtns();startGame('online',true)},500)});
   onlinePeer.on('error',(err)=>{if(err.type==='unavailable-id'){if(onlinePeer)onlinePeer.destroy();if(randomSearching)setTimeout(()=>{if(onlinePeer)onlinePeer.destroy();tryRandomConnect()},1000)}else{lobbyStatus.textContent='❌ Error: '+err.type;if(randomSearching)setTimeout(tryRandomConnect,2000)}});
 }
+/* === Reconnect === */
+(function(){const r=localStorage.getItem('chess_room');if(r){lobbyStatus.textContent=`🔄 Rejoin room ${r}? Create or join a new game to dismiss.`}})();
 </script>
 </body>
 </html>
