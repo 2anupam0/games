@@ -1043,8 +1043,8 @@ function closeDiffModal(){diffModal.classList.remove('show')}
 const btnCreate=document.getElementById('btnCreateRoom'),btnJoin=document.getElementById('btnJoinRoom'),btnRand=document.getElementById('btnRandom'),btnCancel=document.getElementById('btnCancelRoom'),btnJoinSubmit=document.getElementById('btnJoinSubmit');
 function showLobby(){showScreen(lobbySc);enableLobbyBtns();resetLobbyUI();lobbyStatus.textContent='Start by creating, joining, or finding a random match'}
 function resetLobbyUI(){roomCodeArea.style.display='none';joinArea.style.display='none';waitingMsg.style.display='block'}
-function enableLobbyBtns(){btnCreate.disabled=false;btnJoin.disabled=false;btnRand.disabled=false}
-function disableLobbyBtns(){btnCreate.disabled=true;btnJoin.disabled=true;btnRand.disabled=true}
+function enableLobbyBtns(){btnCreate.disabled=false;btnJoin.disabled=false;btnRand.disabled=false;btnJoinSubmit.disabled=false;joinInput.disabled=false}
+function disableLobbyBtns(){btnCreate.disabled=true;btnJoin.disabled=true;btnRand.disabled=true;btnJoinSubmit.disabled=true;joinInput.disabled=true}
 function cleanupOnline(){
   stopHeartbeat();
   opponentLeft=false;restartBtn.textContent='↻ New Game';
@@ -1115,12 +1115,12 @@ function joinRoomFn(){
     onlinePeer=newPeer(undefined,{debug:0});
     onlinePeer.on('open',()=>{
       if(!stillJoining()){cleanupOnline();enableLobbyBtns();return}
-      const conn=onlinePeer.connect(code,{reliable:true});onlineConn=conn;
-    const t=setTimeout(()=>{if(stillJoining()&&!conn.open)retryJoinFn()},30000);
-    conn.on('open',()=>{clearTimeout(t);localStorage.setItem('chess_room',code);localStorage.setItem('chess_ishost','false');lobbyStatus.textContent='✅ Connected! Starting game...';conn.on('data',(d)=>handleOnlineData(d));conn.on('close',()=>{onlineConn=null;if(!gameOver&&mode==='online'&&gameSc.style.display!=='none'){lobbyStatus.textContent='❌ Opponent disconnected.';statusEl.textContent='❌ Opponent disconnected.';opponentLeft=true;restartBtn.textContent='↻ Opponent left — New Game'}});setTimeout(()=>startGame('online',false),500)});
-    conn.on('error',()=>{if(stillJoining()){clearTimeout(t);retryJoinFn()}});
-  });
-  onlinePeer.on('error',()=>{if(stillJoining())retryJoinFn()});
+      const conn=onlinePeer.connect(code,{serialization:'json'});onlineConn=conn;
+      const t=setTimeout(()=>{if(stillJoining()&&!conn.open)retryJoinFn()},30000);
+      conn.on('open',()=>{clearTimeout(t);localStorage.setItem('chess_room',code);localStorage.setItem('chess_ishost','false');lobbyStatus.textContent='✅ Connected! Starting game...';conn.on('data',(d)=>handleOnlineData(d));conn.on('close',()=>{onlineConn=null;if(!gameOver&&mode==='online'&&gameSc.style.display!=='none'){lobbyStatus.textContent='❌ Opponent disconnected.';statusEl.textContent='❌ Opponent disconnected.';opponentLeft=true;restartBtn.textContent='↻ Opponent left — New Game'}});setTimeout(()=>startGame('online',false),500)});
+      conn.on('error',()=>{if(stillJoining()){clearTimeout(t);retryJoinFn()}});
+    });
+    onlinePeer.on('error',()=>{if(stillJoining())retryJoinFn()});
 }
 doJoinFn();
 const RANDOM_PREFIX='C_R_';
@@ -1132,7 +1132,7 @@ function tryRandomConnect(){
   if(!randomSearching)return;
   onlinePeer=newPeer(undefined,{debug:0});
   onlinePeer.on('open',()=>{
-    const lobbyId=RANDOM_PREFIX+'LOBBY';const conn=onlinePeer.connect(lobbyId,{reliable:true});let responded=false;
+    const lobbyId=RANDOM_PREFIX+'LOBBY';const conn=onlinePeer.connect(lobbyId,{serialization:'json'});let responded=false;
     const t=setTimeout(()=>{if(!responded){conn.close();if(onlinePeer)onlinePeer.destroy();becomeLobbyHost()}},2000);
     conn.on('open',()=>{responded=true;clearTimeout(t);onlineConn=conn;lobbyStatus.textContent='✅ Match found! Starting game...';conn.on('data',(d)=>handleOnlineData(d));conn.on('close',()=>{onlineConn=null;if(!gameOver&&mode==='online'&&gameSc.style.display!=='none'){lobbyStatus.textContent='❌ Opponent disconnected.';statusEl.textContent='❌ Opponent disconnected.';opponentLeft=true;restartBtn.textContent='↻ Opponent left — New Game'}});setTimeout(()=>{randomSearching=false;enableLobbyBtns();startGame('online',false)},500)});
     conn.on('error',()=>{clearTimeout(t);if(!responded){if(onlinePeer)onlinePeer.destroy();becomeLobbyHost()}});

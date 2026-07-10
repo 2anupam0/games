@@ -678,11 +678,15 @@ function enableLobbyBtns() {
   btnCreateRoom.disabled = false;
   btnJoinRoom.disabled = false;
   btnRandom.disabled = false;
+  btnJoinSubmit.disabled = false;
+  joinInput.disabled = false;
 }
 function disableLobbyBtns() {
   btnCreateRoom.disabled = true;
   btnJoinRoom.disabled = true;
   btnRandom.disabled = true;
+  btnJoinSubmit.disabled = true;
+  joinInput.disabled = true;
 }
 
 /* ---- Generate 6-char code ---- */
@@ -791,7 +795,7 @@ function joinRoom() {
     onlinePeer = newPeer(undefined, { debug: 0 });
     onlinePeer.on('open', () => {
       if (!stillJoining()) { cleanupOnline(); enableLobbyBtns(); return; }
-      const conn = onlinePeer.connect(code, { reliable: true });
+      const conn = onlinePeer.connect(code, { serialization: 'json' });
       onlineConn = conn;
       const timeout = setTimeout(() => {
         if (stillJoining() && !conn.open) { retryJoin(); }
@@ -854,7 +858,7 @@ function tryRandomConnect() {
 
 function tryConnectToLobby() {
   const lobbyId = RANDOM_PREFIX + 'LOBBY';
-  const conn = onlinePeer.connect(lobbyId, { reliable: true });
+  const conn = onlinePeer.connect(lobbyId, { serialization: 'json' });
   let responded = false;
 
   const timeout = setTimeout(() => {
