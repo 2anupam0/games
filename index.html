@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Game Hub</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Segoe UI', sans-serif;
+  background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 2rem;
+}
+.container { text-align: center; }
+h1 {
+  color: #fff;
+  font-size: 3rem;
+  letter-spacing: 4px;
+  text-shadow: 0 0 40px rgba(124,58,237,0.4);
+  margin-bottom: 0.5rem;
+}
+.subtitle { color: #888; font-size: 1rem; margin-bottom: 2.5rem; }
+.games-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.5rem;
+  max-width: 900px;
+  margin: 0 auto;
+}
+.game-card {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 20px;
+  padding: 2rem 1.5rem;
+  text-decoration: none;
+  color: #fff;
+  transition: all 0.3s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.8rem;
+  cursor: pointer;
+}
+.game-card:hover {
+  background: rgba(124,58,237,0.15);
+  border-color: #7c3aed;
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(124,58,237,0.2);
+}
+.game-card .icon { font-size: 3rem; }
+.game-card .name { font-size: 1.3rem; font-weight: bold; }
+.game-card .desc { color: #888; font-size: 0.85rem; line-height: 1.4; }
+.game-card.coming {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+.game-card.coming:hover {
+  background: rgba(255,255,255,0.05);
+  border-color: rgba(255,255,255,0.1);
+  transform: none;
+  box-shadow: none;
+}
+.badge {
+  background: #7c3aed;
+  color: #fff;
+  font-size: 0.7rem;
+  padding: 2px 12px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+@media (max-width: 600px) {
+  h1 { font-size: 2rem; }
+  .games-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🎮 GAME HUB</h1>
+  <p class="subtitle">Choose a game to play</p>
+  <div class="games-grid">
+    <a href="tic-tac-toe.html" class="game-card">
+      <span class="icon">❌⭕</span>
+      <span class="name">Tic-Tac-Toe</span>
+      <span class="desc">Play with friend, computer AI, or online</span>
+      <span class="badge">Play now</span>
+    </a>
+    <a href="#" class="game-card coming">
+      <span class="icon">❓</span>
+      <span class="name">Coming Soon</span>
+      <span class="desc">New games on the way...</span>
+    </a>
+    <a href="#" class="game-card coming">
+      <span class="icon">❓</span>
+      <span class="name">Coming Soon</span>
+      <span class="desc">New games on the way...</span>
+    </a>
+  </div>
+</div>
+</body>
+</html>
