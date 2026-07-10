@@ -545,11 +545,10 @@ function legalMovesFull(board, color, state) {
         const ni=i+dr*8+df;
         if (inBounds(ni) && Math.abs(f-(ni%8))<=1 && (!board[ni]||colorOf(board[ni])===enemyColor(color))) pieceMoves.push({from:i,to:ni});
       }
-      // Castling
-      if (color==='w' && s.castling.K && board[f+7]==='R' && !board[f+5] && !board[f+6]) pieceMoves.push({from:i,to:i+2,castle:true});
-      if (color==='w' && s.castling.Q && board[f+0]==='R' && !board[f+1] && !board[f+2] && !board[f+3]) pieceMoves.push({from:i,to:i-2,castle:true});
-      if (color==='b' && s.castling.k && board[f+63]==='r' && !board[f+61] && !board[f+62]) pieceMoves.push({from:i,to:i+2,castle:true});
-      if (color==='b' && s.castling.q && board[f+56]==='r' && !board[f+57] && !board[f+58] && !board[f+59]) pieceMoves.push({from:i,to:i-2,castle:true});
+      if (color==='w' && s.castling.K && board[i+3]==='R' && !board[i+1] && !board[i+2]) pieceMoves.push({from:i,to:i+2,castle:true});
+      if (color==='w' && s.castling.Q && board[i-4]==='R' && !board[i-3] && !board[i-2] && !board[i-1]) pieceMoves.push({from:i,to:i-2,castle:true});
+      if (color==='b' && s.castling.k && board[i+3]==='r' && !board[i+1] && !board[i+2]) pieceMoves.push({from:i,to:i+2,castle:true});
+      if (color==='b' && s.castling.q && board[i-4]==='r' && !board[i-3] && !board[i-2] && !board[i-1]) pieceMoves.push({from:i,to:i-2,castle:true});
     }
 
     for (const m of pieceMoves) {
@@ -635,8 +634,9 @@ function aiMove(board, color, state, depth) {
   let bestMove = moves[0];
   let bestScore = -Infinity;
   for (const m of moves) {
+    const piece = board[m.from];
     const nb = makeMove(board, m, state);
-    const ns = updateState(board, m, state, color);
+    const ns = updateState(piece, m, state, color);
     const score = -negamax(nb, enemyColor(color), ns, depth-1, -Infinity, Infinity, -1);
     if (score > bestScore) { bestScore = score; bestMove = m; }
   }
@@ -655,8 +655,9 @@ function negamax(board, color, state, depth, alpha, beta, sign) {
   }
   let value = -Infinity;
   for (const m of moves) {
+    const piece = board[m.from];
     const nb = makeMove(board, m, state);
-    const ns = updateState(board, m, state, color);
+    const ns = updateState(piece, m, state, color);
     const score = -negamax(nb, enemyColor(color), ns, depth-1, -beta, -alpha, -sign);
     value = Math.max(value, score);
     alpha = Math.max(alpha, score);
@@ -665,13 +666,11 @@ function negamax(board, color, state, depth, alpha, beta, sign) {
   return value;
 }
 
-function updateState(board, move, state, color) {
+function updateState(piece, move, state, color) {
   const ns = { castling: {...state.castling}, ep: null };
   if (move.double) ns.ep = move.to + (color==='w'?-8:8);
-  // Update castling rights
-  const p = board[move.from];
-  if (p === 'K') { ns.castling.K = false; ns.castling.Q = false; }
-  if (p === 'k') { ns.castling.k = false; ns.castling.q = false; }
+  if (piece === 'K') { ns.castling.K = false; ns.castling.Q = false; }
+  if (piece === 'k') { ns.castling.k = false; ns.castling.q = false; }
   if (move.from === 0 || move.to === 0) ns.castling.q = false;
   if (move.from === 7 || move.to === 7) ns.castling.k = false;
   if (move.from === 56 || move.to === 56) ns.castling.Q = false;
@@ -771,8 +770,8 @@ function updateStatus() {
 function updateCaptured() {
   const order = {P:1,N:2,B:3,R:4,Q:5,K:6};
   const sortP = (a,b)=>order[a.toUpperCase()]-order[b.toUpperCase()];
-  capturedB.innerHTML = '<span class="captured-label">Captured:</span> ' + capturedPieces.w.sort(sortP).map(p=>UNICODE_PIECES[p]).join('');
-  capturedW.innerHTML = '<span class="captured-label">Lost:</span> ' + capturedPieces.b.sort(sortP).map(p=>UNICODE_PIECES[p]).join('');
+  capturedB.innerHTML = '<span class="captured-label">Captured by Black:</span> ' + capturedPieces.b.sort(sortP).map(p=>UNICODE_PIECES[p]).join('');
+  capturedW.innerHTML = '<span class="captured-label">Captured by White:</span> ' + capturedPieces.w.sort(sortP).map(p=>UNICODE_PIECES[p]).join('');
 }
 
 function clickSq(i) {
@@ -817,9 +816,10 @@ function makePlayerMove(move) {
   const captured = board[move.to];
   if (captured) capturedPieces[currentColor].push(captured);
 
+  const movedPiece = board[move.from];
   moveHistory.push({from:move.from,to:move.to,board:cloneBoard(board),state:{...gameState,castling:{...gameState.castling}}, captured, color:currentColor});
   board = makeMove(board, move, gameState);
-  gameState = updateState(board, move, gameState, currentColor);
+  gameState = updateState(movedPiece, move, gameState, currentColor);
   selectedSq = null;
   legalSqs = [];
 
@@ -845,9 +845,10 @@ function doComputerMove() {
   const captured = board[move.to];
   if (captured) capturedPieces['b'].push(captured);
 
+  const movedPiece2 = board[move.from];
   moveHistory.push({from:move.from,to:move.to,board:cloneBoard(board),state:{...gameState,castling:{...gameState.castling}}, captured, color:'b'});
   board = makeMove(board, move, gameState);
-  gameState = updateState(board, move, gameState, 'b');
+  gameState = updateState(movedPiece2, move, gameState, 'b');
   currentColor = 'w';
   checkGameEnd();
   render();
@@ -875,13 +876,12 @@ function checkGameEnd() {
   }
   // Insufficient material
   const pieces = board.filter(p=>p);
-  const majors = pieces.filter(p=>!['K','k','P','p'].includes(p));
-  if (majors.length === 0) {
-    gameOver = true;
-    celebrate(null);
-    statusEl.textContent = "🤝 Draw!";
-    render();
-    return true;
+  const minors = pieces.filter(p=>!['K','k','P','p'].includes(p));
+  if (minors.length === 0) {
+    gameOver = true; celebrate(null); statusEl.textContent = "🤝 Draw (insufficient material)!"; render(); return true;
+  }
+  if (minors.length === 1 && ['B','b','N','n'].includes(minors[0])) {
+    gameOver = true; celebrate(null); statusEl.textContent = "🤝 Draw (insufficient material)!"; render(); return true;
   }
   return false;
 }
@@ -983,9 +983,10 @@ function animateCelebration(){
 }
 
 /* ==================== GAME CONTROL ==================== */
-function startGame(m) {
-  mode=m; showScreen(gameSc);
-  board=initBoard(); currentColor='w'; gameOver=false; selectedSq=null; legalSqs=[]; moveHistory=[];
+function startGame(m, host=true) {
+  mode=m; amIHost=host; showScreen(gameSc);
+  board=initBoard(); currentColor= mode==='online' ? (amIHost?'w':'b') : 'w';
+  gameOver=false; selectedSq=null; legalSqs=[]; moveHistory=[];
   capturedPieces={w:[],b:[]};
   gameState={castling:{K:true,Q:true,k:true,q:true},ep:null};
   const labels={friend:'👥 vs Friend',computer:'🤖 vs Computer',online:'🌐 Online'};
@@ -1021,10 +1022,11 @@ function genCode(){const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let r='';for(let i
 function handleOnlineData(data){
   if(data.type==='move'){
     const move={from:data.from,to:data.to,promo:data.promo,castle:data.castle,ep:data.ep,double:data.double};
-    const captured=board[move.to];if(captured)capturedPieces[currentColor].push(captured);
+    const captured=board[move.to];if(captured)capturedPieces[enemyColor(currentColor)].push(captured);
+    const movedPiece3=board[move.from];
     moveHistory.push({from:move.from,to:move.to,board:cloneBoard(board),state:{...gameState,castling:{...gameState.castling}},captured,color:currentColor});
     board=makeMove(board,move,gameState);
-    gameState=updateState(board,move,gameState,currentColor);
+    gameState=updateState(movedPiece3,move,gameState,currentColor);
     currentColor=enemyColor(currentColor);checkGameEnd();render();
   }
 }
@@ -1037,7 +1039,7 @@ btnCreate.addEventListener('click',()=>{
     onlineConn=conn;conn.on('data',(d)=>handleOnlineData(d));
     conn.on('close',()=>{if(!gameOver&&mode==='online'){lobbyStatus.textContent='❌ Opponent disconnected.';statusEl.textContent='❌ Opponent disconnected.'}onlineConn=null});
     lobbyStatus.textContent='✅ Opponent joined! Starting game...';waitingMsg.style.display='none';
-    setTimeout(()=>startGame('online'),500);
+    setTimeout(()=>startGame('online',true),500);
   });
   onlinePeer.on('error',(err)=>{if(err.type==='unavailable-id'){if(onlinePeer)onlinePeer.destroy();createRoom()}else{lobbyStatus.textContent='❌ Error: '+err.type;roomCodeArea.style.display='none';enableLobbyBtns()}});
 });
@@ -1053,7 +1055,7 @@ function joinRoomFn(){
   onlinePeer.on('open',()=>{
     const conn=onlinePeer.connect(code,{reliable:true});onlineConn=conn;
     const t=setTimeout(()=>{if(!conn.open){lobbyStatus.textContent='❌ Connection timed out.';cleanupOnline();enableLobbyBtns()}},8000);
-    conn.on('open',()=>{clearTimeout(t);lobbyStatus.textContent='✅ Connected! Starting game...';conn.on('data',(d)=>handleOnlineData(d));conn.on('close',()=>{if(!gameOver&&mode==='online'){lobbyStatus.textContent='❌ Opponent disconnected.';statusEl.textContent='❌ Opponent disconnected.'}onlineConn=null});setTimeout(()=>startGame('online'),500)});
+    conn.on('open',()=>{clearTimeout(t);lobbyStatus.textContent='✅ Connected! Starting game...';conn.on('data',(d)=>handleOnlineData(d));conn.on('close',()=>{if(!gameOver&&mode==='online'){lobbyStatus.textContent='❌ Opponent disconnected.';statusEl.textContent='❌ Opponent disconnected.'}onlineConn=null});setTimeout(()=>startGame('online',false),500)});
     conn.on('error',()=>{clearTimeout(t);lobbyStatus.textContent='❌ Connection failed.';cleanupOnline();enableLobbyBtns()});
   });
   onlinePeer.on('error',(err)=>{lobbyStatus.textContent='❌ Error: '+err.type;cleanupOnline();enableLobbyBtns()});
@@ -1069,7 +1071,7 @@ function tryRandomConnect(){
   onlinePeer.on('open',()=>{
     const lobbyId=RANDOM_PREFIX+'LOBBY';const conn=onlinePeer.connect(lobbyId,{reliable:true});let responded=false;
     const t=setTimeout(()=>{if(!responded){conn.close();if(onlinePeer)onlinePeer.destroy();becomeLobbyHost()}},2000);
-    conn.on('open',()=>{responded=true;clearTimeout(t);onlineConn=conn;lobbyStatus.textContent='✅ Match found! Starting game...';conn.on('data',(d)=>handleOnlineData(d));conn.on('close',()=>{if(!gameOver&&mode==='online'){lobbyStatus.textContent='❌ Opponent disconnected.';statusEl.textContent='❌ Opponent disconnected.'}onlineConn=null});setTimeout(()=>{randomSearching=false;enableLobbyBtns();startGame('online')},500)});
+    conn.on('open',()=>{responded=true;clearTimeout(t);onlineConn=conn;lobbyStatus.textContent='✅ Match found! Starting game...';conn.on('data',(d)=>handleOnlineData(d));conn.on('close',()=>{if(!gameOver&&mode==='online'){lobbyStatus.textContent='❌ Opponent disconnected.';statusEl.textContent='❌ Opponent disconnected.'}onlineConn=null});setTimeout(()=>{randomSearching=false;enableLobbyBtns();startGame('online',false)},500)});
     conn.on('error',()=>{clearTimeout(t);if(!responded){if(onlinePeer)onlinePeer.destroy();becomeLobbyHost()}});
   });
   onlinePeer.on('error',()=>{if(onlinePeer)onlinePeer.destroy();if(randomSearching)setTimeout(tryRandomConnect,1500)});
@@ -1077,7 +1079,7 @@ function tryRandomConnect(){
 function becomeLobbyHost(){
   if(!randomSearching)return;lobbyStatus.textContent='⏳ Waiting for a random opponent...';
   onlinePeer=new Peer(RANDOM_PREFIX+'LOBBY',{debug:0});
-  onlinePeer.on('connection',(conn)=>{onlineConn=conn;lobbyStatus.textContent='✅ Match found! Starting game...';conn.on('data',(d)=>handleOnlineData(d));conn.on('close',()=>{if(!gameOver&&mode==='online'){lobbyStatus.textContent='❌ Opponent disconnected.';statusEl.textContent='❌ Opponent disconnected.'}onlineConn=null});setTimeout(()=>{randomSearching=false;enableLobbyBtns();startGame('online')},500)});
+  onlinePeer.on('connection',(conn)=>{onlineConn=conn;lobbyStatus.textContent='✅ Match found! Starting game...';conn.on('data',(d)=>handleOnlineData(d));conn.on('close',()=>{if(!gameOver&&mode==='online'){lobbyStatus.textContent='❌ Opponent disconnected.';statusEl.textContent='❌ Opponent disconnected.'}onlineConn=null});setTimeout(()=>{randomSearching=false;enableLobbyBtns();startGame('online',true)},500)});
   onlinePeer.on('error',(err)=>{if(err.type==='unavailable-id'){if(onlinePeer)onlinePeer.destroy();if(randomSearching)setTimeout(()=>{if(onlinePeer)onlinePeer.destroy();tryRandomConnect()},1000)}else{lobbyStatus.textContent='❌ Error: '+err.type;if(randomSearching)setTimeout(tryRandomConnect,2000)}});
 }
 </script>
