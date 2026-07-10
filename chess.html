@@ -692,6 +692,16 @@ let moveHistory = [];
 let capturedPieces = {w:[],b:[]};
 let scores = { w: 0, b: 0, draw: 0 };
 let onlineConn = null, onlinePeer = null, myRoomCode = null, randomSearching = false;
+const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
+];
+function newPeer(id, extra) {
+  return new Peer(id, { ...extra, config: { iceServers: ICE_SERVERS } });
+}
 
 /* ==================== DOM REFS ==================== */
 const menuSc=document.getElementById('menuScreen');
@@ -1037,7 +1047,7 @@ function handleOnlineData(data){
 btnCreate.addEventListener('click',()=>{
   cleanupOnline();resetLobbyUI();disableLobbyBtns();lobbyStatus.textContent='⏳ Creating room...';
   const code=genCode();
-  onlinePeer=new Peer(code,{debug:0});
+  onlinePeer=newPeer(code,{debug:0});
   onlinePeer.on('open',(id)=>{myRoomCode=id;roomCodeDisplay.textContent=myRoomCode;roomCodeArea.style.display='block';lobbyStatus.textContent='✅ Room created! Share the 6-digit code above.'});
   onlinePeer.on('connection',(conn)=>{
     onlineConn=conn;conn.on('data',(d)=>handleOnlineData(d));
@@ -1055,15 +1065,33 @@ function joinRoomFn(){
   const code=joinInput.value.trim().toUpperCase();
   if(code.length!==6){lobbyStatus.textContent='⚠️ Code must be exactly 6 characters.';return}
   disableLobbyBtns();lobbyStatus.textContent='⏳ Connecting...';
-  onlinePeer=new Peer(undefined,{debug:0});
-  onlinePeer.on('open',()=>{
-    const conn=onlinePeer.connect(code,{reliable:true});onlineConn=conn;
-    const t=setTimeout(()=>{if(!conn.open){lobbyStatus.textContent='❌ Connection timed out.';cleanupOnline();enableLobbyBtns()}},8000);
+  let joinAttempts=0;
+  function stillJoining(){return lobbySc.style.display!=='none'&&joinArea.style.display!=='none'}
+  function retryJoinFn(){
+    if(!stillJoining()){cleanupOnline();enableLobbyBtns();return}
+    joinAttempts++;
+    if(joinAttempts<3){
+      lobbyStatus.textContent=`⏳ Retrying (${joinAttempts}/3)...`;
+      cleanupOnline();
+      setTimeout(doJoinFn,500);
+    }else{
+      lobbyStatus.textContent='❌ Connection failed after 3 attempts. Check the code and try again.';
+      cleanupOnline();enableLobbyBtns();
+    }
+  }
+  function doJoinFn(){
+    if(!stillJoining()){cleanupOnline();enableLobbyBtns();return}
+    onlinePeer=newPeer(undefined,{debug:0});
+    onlinePeer.on('open',()=>{
+      if(!stillJoining()){cleanupOnline();enableLobbyBtns();return}
+      const conn=onlinePeer.connect(code,{reliable:true});onlineConn=conn;
+    const t=setTimeout(()=>{if(stillJoining()&&!conn.open)retryJoinFn()},30000);
     conn.on('open',()=>{clearTimeout(t);lobbyStatus.textContent='✅ Connected! Starting game...';conn.on('data',(d)=>handleOnlineData(d));conn.on('close',()=>{if(!gameOver&&mode==='online'){lobbyStatus.textContent='❌ Opponent disconnected.';statusEl.textContent='❌ Opponent disconnected.'}onlineConn=null});setTimeout(()=>startGame('online',false),500)});
-    conn.on('error',()=>{clearTimeout(t);lobbyStatus.textContent='❌ Connection failed.';cleanupOnline();enableLobbyBtns()});
+    conn.on('error',()=>{if(stillJoining()){clearTimeout(t);retryJoinFn()}});
   });
-  onlinePeer.on('error',(err)=>{lobbyStatus.textContent='❌ Error: '+err.type;cleanupOnline();enableLobbyBtns()});
+  onlinePeer.on('error',()=>{if(stillJoining())retryJoinFn()});
 }
+doJoinFn();
 const RANDOM_PREFIX='C_R_';
 btnRand.addEventListener('click',()=>{
   cleanupOnline();resetLobbyUI();disableLobbyBtns();randomSearching=true;lobbyStatus.textContent='🔍 Searching for an opponent...';
@@ -1071,7 +1099,7 @@ btnRand.addEventListener('click',()=>{
 });
 function tryRandomConnect(){
   if(!randomSearching)return;
-  onlinePeer=new Peer(undefined,{debug:0});
+  onlinePeer=newPeer(undefined,{debug:0});
   onlinePeer.on('open',()=>{
     const lobbyId=RANDOM_PREFIX+'LOBBY';const conn=onlinePeer.connect(lobbyId,{reliable:true});let responded=false;
     const t=setTimeout(()=>{if(!responded){conn.close();if(onlinePeer)onlinePeer.destroy();becomeLobbyHost()}},2000);
@@ -1082,7 +1110,7 @@ function tryRandomConnect(){
 }
 function becomeLobbyHost(){
   if(!randomSearching)return;lobbyStatus.textContent='⏳ Waiting for a random opponent...';
-  onlinePeer=new Peer(RANDOM_PREFIX+'LOBBY',{debug:0});
+  onlinePeer=newPeer(RANDOM_PREFIX+'LOBBY',{debug:0});
   onlinePeer.on('connection',(conn)=>{onlineConn=conn;lobbyStatus.textContent='✅ Match found! Starting game...';conn.on('data',(d)=>handleOnlineData(d));conn.on('close',()=>{if(!gameOver&&mode==='online'){lobbyStatus.textContent='❌ Opponent disconnected.';statusEl.textContent='❌ Opponent disconnected.'}onlineConn=null});setTimeout(()=>{randomSearching=false;enableLobbyBtns();startGame('online',true)},500)});
   onlinePeer.on('error',(err)=>{if(err.type==='unavailable-id'){if(onlinePeer)onlinePeer.destroy();if(randomSearching)setTimeout(()=>{if(onlinePeer)onlinePeer.destroy();tryRandomConnect()},1000)}else{lobbyStatus.textContent='❌ Error: '+err.type;if(randomSearching)setTimeout(tryRandomConnect,2000)}});
 }

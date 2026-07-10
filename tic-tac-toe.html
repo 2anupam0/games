@@ -429,6 +429,16 @@ let onlinePeer = null;
 let myRoomCode = null;
 let amIHost = false;
 let randomSearching = false;
+const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
+];
+function newPeer(id, extra) {
+  return new Peer(id, { ...extra, config: { iceServers: ICE_SERVERS } });
+}
 
 const winPatterns = [
   [0,1,2],[3,4,5],[6,7,8],
@@ -673,7 +683,7 @@ function createRoom() {
   lobbyStatus.textContent = '⏳ Creating room...';
 
   const code = generateRoomCode();
-  onlinePeer = new Peer(code, { debug: 0 });
+  onlinePeer = newPeer(code, { debug: 0 });
 
   onlinePeer.on('open', (id) => {
     myRoomCode = id;
@@ -736,46 +746,50 @@ function joinRoom() {
   disableLobbyBtns();
   lobbyStatus.textContent = '⏳ Connecting...';
 
-  onlinePeer = new Peer(undefined, { debug: 0 });
-  onlinePeer.on('open', () => {
-    const conn = onlinePeer.connect(code, { reliable: true });
-    onlineConn = conn;
-
-    const timeout = setTimeout(() => {
-      if (!conn.open) {
-        lobbyStatus.textContent = '❌ Connection timed out. Check the code.';
-        cleanupOnline();
-        enableLobbyBtns();
-      }
-    }, 8000);
-
-    conn.on('open', () => {
-      clearTimeout(timeout);
-      lobbyStatus.textContent = '✅ Connected! Starting game...';
-      conn.on('data', (data) => { handleOnlineData(data); });
-      conn.on('close', () => {
-        if (!gameOver && mode === 'online' && !randomSearching) {
-          lobbyStatus.textContent = '❌ Opponent disconnected.';
-          statusEl.textContent = '❌ Opponent disconnected.';
-        }
-        onlineConn = null;
-      });
-      setTimeout(() => startGame('online', false), 500);
-    });
-
-    conn.on('error', (err) => {
-      clearTimeout(timeout);
-      lobbyStatus.textContent = '❌ Connection failed. Check the room code.';
+  let joinAttempts = 0;
+  function stillJoining() { return lobbySc.style.display !== 'none' && joinArea.style.display !== 'none'; }
+  function retryJoin() {
+    if (!stillJoining()) { cleanupOnline(); enableLobbyBtns(); return; }
+    joinAttempts++;
+    if (joinAttempts < 3) {
+      lobbyStatus.textContent = `⏳ Retrying (${joinAttempts}/3)...`;
+      cleanupOnline();
+      setTimeout(doJoin, 500);
+    } else {
+      lobbyStatus.textContent = '❌ Connection failed after 3 attempts. Check the code and try again.';
       cleanupOnline();
       enableLobbyBtns();
+    }
+  }
+  function doJoin() {
+    if (!stillJoining()) { cleanupOnline(); enableLobbyBtns(); return; }
+    onlinePeer = newPeer(undefined, { debug: 0 });
+    onlinePeer.on('open', () => {
+      if (!stillJoining()) { cleanupOnline(); enableLobbyBtns(); return; }
+      const conn = onlinePeer.connect(code, { reliable: true });
+      onlineConn = conn;
+      const timeout = setTimeout(() => {
+        if (stillJoining() && !conn.open) { retryJoin(); }
+      }, 30000);
+      conn.on('open', () => {
+        if (!stillJoining()) { cleanupOnline(); enableLobbyBtns(); return; }
+        clearTimeout(timeout);
+        lobbyStatus.textContent = '✅ Connected! Starting game...';
+        conn.on('data', (data) => { handleOnlineData(data); });
+        conn.on('close', () => {
+          if (!gameOver && mode === 'online' && !randomSearching) {
+            lobbyStatus.textContent = '❌ Opponent disconnected.';
+            statusEl.textContent = '❌ Opponent disconnected.';
+          }
+          onlineConn = null;
+        });
+        setTimeout(() => startGame('online', false), 500);
+      });
+      conn.on('error', () => { if (stillJoining()) { clearTimeout(timeout); retryJoin(); } });
     });
-  });
-
-  onlinePeer.on('error', (err) => {
-    lobbyStatus.textContent = '❌ Error: ' + err.type;
-    cleanupOnline();
-    enableLobbyBtns();
-  });
+    onlinePeer.on('error', () => { if (stillJoining()) retryJoin(); });
+  }
+  doJoin();
 }
 
 /* ---- Random Match ---- */
@@ -794,8 +808,7 @@ function findRandomMatch() {
 function tryRandomConnect() {
   if (!randomSearching) return;
 
-  // Try connecting to a peer that's waiting
-  onlinePeer = new Peer(undefined, { debug: 0 });
+  onlinePeer = newPeer(undefined, { debug: 0 });
 
   onlinePeer.on('open', () => {
     // Try to find waiting players by trying common waiting IDs
@@ -856,7 +869,7 @@ function becomeLobbyHost() {
   if (!randomSearching) return;
   lobbyStatus.textContent = '⏳ Waiting for a random opponent...';
 
-  onlinePeer = new Peer(RANDOM_PREFIX + 'LOBBY', { debug: 0 });
+  onlinePeer = newPeer(RANDOM_PREFIX + 'LOBBY', { debug: 0 });
 
   onlinePeer.on('open', () => {
     // Waiting for someone to connect
