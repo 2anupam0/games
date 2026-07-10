@@ -336,7 +336,7 @@ body {
 
 <!-- ========== LOBBY ========== -->
 <div id="lobbyScreen" class="screen">
-  <button class="back-btn" onclick="backToMenu()">← Back to menu</button>
+    <button class="back-btn" onclick="backFromLobby()">← Back to menu</button>
   <h2>🌐 Play Online</h2>
   <div class="lobby-options">
     <button class="lobby-btn" id="btnCreateRoom">🏠 Create Room</button>
@@ -593,32 +593,29 @@ function resetScores() {
   updateScoreboard();
 }
 
+let lastMode = null;
 /* ===================== START GAME ===================== */
 function startGame(m, host = true) {
-  mode = m;
-  amIHost = host;
+  if (lastMode === m && m !== 'online' && !gameOver) {
+    showScreen(gameSc); render(); return;
+  }
+  if (m !== 'online') cleanupOnline();
+  mode = m; amIHost = host; lastMode = m;
   showScreen(gameSc);
 
   const labels = { friend: '👥 vs Friend', computer: '🤖 vs Computer', online: '🌐 Online' };
   gameTitle.textContent = labels[mode] || '';
 
-  
-
-  if (mode === 'online') {
-    currentPlayer = amIHost ? 'X' : 'O';
-    gameOver = false;
-    board = Array(9).fill(null);
-    render();
-  } else {
-    resetScores();
-    resetGame();
-  }
+  gameOver = false;
+  board = Array(9).fill(null);
+  currentPlayer = m === 'online' ? (amIHost ? 'X' : 'O') : 'X';
+  scores = { X: 0, O: 0, draw: 0 };
+  updateScoreboard();
+  render();
 }
 
-function backToMenu() {
-  cleanupOnline();
-  showMenu();
-}
+function backToMenu() { showMenu(); }
+function backFromLobby() { cleanupOnline(); showMenu(); }
 
 function cleanupOnline() {
   randomSearching = false;

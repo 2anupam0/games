@@ -171,7 +171,7 @@ body {
 
 <!-- LOBBY -->
 <div id="lobbyScreen" class="screen">
-  <button class="back-btn" onclick="backToMenu()">← Back to menu</button>
+  <button class="back-btn" onclick="backFromLobby()">← Back to menu</button>
   <h2>🌐 Play Online</h2>
   <div class="lobby-options">
     <button class="lobby-btn" id="btnCreateRoom">🏠 Create Room</button>
@@ -982,10 +982,13 @@ function animateCelebration(){
   else{animFrame=null;ctx.clearRect(0,0,canvas.width,canvas.height)}
 }
 
+let lastMode=null;
 /* ==================== GAME CONTROL ==================== */
 function startGame(m, host=true) {
-  mode=m; amIHost=host; showScreen(gameSc);
-  board=initBoard(); currentColor= mode==='online' ? (amIHost?'w':'b') : 'w';
+  if(lastMode===m && m!=='online' && !gameOver){ showScreen(gameSc); render(); return; }
+  if(m!=='online')cleanupOnline();
+  mode=m; amIHost=host; lastMode=m; showScreen(gameSc);
+  board=initBoard(); currentColor=mode==='online'?(amIHost?'w':'b'):'w';
   gameOver=false; selectedSq=null; legalSqs=[]; moveHistory=[];
   capturedPieces={w:[],b:[]};
   gameState={castling:{K:true,Q:true,k:true,q:true},ep:null};
@@ -998,7 +1001,8 @@ function resetGame() {
   capturedPieces={w:[],b:[]}; gameState={castling:{K:true,Q:true,k:true,q:true},ep:null};
   render();
 }
-function backToMenu() { cleanupOnline(); showMenu(); }
+function backToMenu() { showMenu(); }
+function backFromLobby() { cleanupOnline(); showMenu(); }
 
 btnUndo.addEventListener('click',undoMove);
 restartBtn.addEventListener('click',resetGame);
