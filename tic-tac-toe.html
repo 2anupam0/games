@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Tic-Tac-Toe</title>
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<!-- WebSocket replaces PeerJS for online multiplayer -->
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -424,34 +424,25 @@ let gameOver = false;
 let mode = 'friend';
 let difficulty = 'easy';
 let scores = { X: 0, O: 0, draw: 0 };
-let onlineConn = null;
-let onlinePeer = null;
+const SERVER_URL = 'ws://localhost:3000'; // ← Change for production, e.g. 'wss://your-app.onrender.com'
+let ws = null;
 let myRoomCode = null;
 let amIHost = false;
 let randomSearching = false;
 let opponentLeft = false;
-let pingInterval = null;
-function startHeartbeat() {
-  stopHeartbeat();
-  pingInterval = setInterval(() => {
-    if (onlineConn && onlineConn.open) { try { onlineConn.send({ type: 'ping' }); } catch(e) {} }
-  }, 25000);
-}
-function stopHeartbeat() { if (pingInterval) { clearInterval(pingInterval); pingInterval = null; } }
-const ICE_SERVERS = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' },
-  { urls: 'stun:stun3.l.google.com:19302' },
-  { urls: 'stun:stun4.l.google.com:19302' },
-  { urls: 'stun:stun.cloudflare.com:3478' },
-  { urls: 'turn:openrelay.metered.ca:80' },
-  { urls: 'turn:openrelay.metered.ca:443?transport=tcp' },
-  { urls: 'turn:openrelay.metered.ca:443?transport=udp' },
-];
-function newPeer(id, extra) {
-  return new Peer(id, { ...extra, config: { iceServers: ICE_SERVERS, iceCandidatePoolSize: 10 } });
-}
+/* Wraps ws.send so existing onlineConn.send/open/close calls keep working.
+   Game messages are wrapped in {type:'game_data', data:...} for the server. */
+const onlineConn = {
+  send: function(obj) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({type:'game_data', data: obj}));
+    }
+  },
+  get open() { return ws && ws.readyState === WebSocket.OPEN; },
+  close: function() { if(ws) { try{ws.close()}catch(e){} ws=null; } },
+  _onData: null,
+  _onClose: null,
+};
 
 const winPatterns = [
   [0,1,2],[3,4,5],[6,7,8],
@@ -638,21 +629,21 @@ function startGame(m, host = true) {
   scores = { X: 0, O: 0, draw: 0 };
   updateScoreboard();
   render();
-  if (m === 'online') startHeartbeat();
 }
 
 function backToMenu() { showMenu(); }
-function backFromLobby() { cleanupOnline(); showMenu(); }
+function backFromLobby() {
+  if (randomSearching && ws) ws.send(JSON.stringify({type:'cancel_match'}));
+  cleanupOnline(); showMenu();
+}
 
 function cleanupOnline() {
-  stopHeartbeat();
   opponentLeft = false; restartBtn.textContent = '↻ New Game';
   randomSearching = false;
-  if (onlineConn) { try { onlineConn.close(); } catch(e) {} onlineConn = null; }
-  if (onlinePeer) { try { onlinePeer.destroy(); } catch(e) {} onlinePeer = null; }
+  onlineConn._onData = null; onlineConn._onClose = null;
+  if (ws) { try{ws.close()}catch(e){} ws = null; }
   myRoomCode = null;
   localStorage.removeItem('ttt_room');
-  localStorage.removeItem('ttt_ishost');
 }
 
 /* ===================== ONLINE LOBBY ===================== */
@@ -689,264 +680,137 @@ function disableLobbyBtns() {
   joinInput.disabled = true;
 }
 
-/* ---- Generate 6-char code ---- */
-function generateRoomCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no I,O,0,1 to avoid confusion
-  let code = '';
-  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
-  return code;
-}
+/* Server generates 6-char room codes */
 
+/* ===================== ONLINE LOBBY (WebSocket) ===================== */
 /* ---- Create Room ---- */
 btnCreateRoom.addEventListener('click', createRoom);
-btnCancelRoom.addEventListener('click', cancelRoom);
+btnCancelRoom.addEventListener('click', () => { cleanupOnline(); resetLobbyUI(); enableLobbyBtns(); lobbyStatus.textContent='Room cancelled. Create, join, or find random.'; });
 
-function createRoom() {
-  cleanupOnline();
-  resetLobbyUI();
-  disableLobbyBtns();
-  lobbyStatus.textContent = '⏳ Creating room...';
-
-  const code = generateRoomCode();
-  onlinePeer = newPeer(code, { debug: 0 });
-
-  onlinePeer.on('open', (id) => {
-    myRoomCode = id;
-    localStorage.setItem('ttt_room', id);
-    localStorage.setItem('ttt_ishost', 'true');
-    roomCodeDisplay.textContent = myRoomCode;
-    roomCodeArea.style.display = 'block';
-    lobbyStatus.textContent = '✅ Room created! Share the 6-digit code above.';
-  });
-
-  onlinePeer.on('connection', (conn) => {
-    onlineConn = conn;
-    onlineConn.on('data', (data) => { handleOnlineData(data); });
-    onlineConn.on('close', () => {
-      onlineConn = null;
-      if (!gameOver && mode === 'online' && gameSc.style.display !== 'none') {
-        lobbyStatus.textContent = '❌ Opponent disconnected.';
-        statusEl.textContent = '❌ Opponent disconnected.';
-        opponentLeft = true;
-        restartBtn.textContent = '↻ Opponent left — New Game';
-      }
-    });
-    lobbyStatus.textContent = '✅ Opponent joined! Starting game...';
-    waitingMsg.style.display = 'none';
-    setTimeout(() => startGame('online', true), 500);
-  });
-
-  onlinePeer.on('error', (err) => {
-    if (err.type === 'unavailable-id') {
-      // code taken, try again
-      if (onlinePeer) onlinePeer.destroy();
-      createRoom();
-    } else {
-      lobbyStatus.textContent = '❌ Error: ' + err.type;
-      roomCodeArea.style.display = 'none';
-      enableLobbyBtns();
+function attachWsHandlers(extra) {
+  onlineConn._onData = handleOnlineData;
+  onlineConn._onClose = () => {
+    if (!gameOver && mode === 'online' && gameSc.style.display !== 'none') {
+      lobbyStatus.textContent = '❌ Opponent disconnected.';
+      statusEl.textContent = '❌ Opponent disconnected.';
+      opponentLeft = true;
+      restartBtn.textContent = '↻ Opponent left — New Game';
     }
-  });
+  };
+  if (ws) ws.onclose = () => { ws = null; };
 }
 
-function cancelRoom() {
-  cleanupOnline();
-  resetLobbyUI();
-  enableLobbyBtns();
-  lobbyStatus.textContent = 'Room cancelled. Create, join, or find random.';
+function createRoom() {
+  cleanupOnline(); resetLobbyUI(); disableLobbyBtns();
+  lobbyStatus.textContent = '⏳ Creating room...';
+  ws = new WebSocket(SERVER_URL);
+  attachWsHandlers();
+  ws.onopen = () => { ws.send(JSON.stringify({type:'create_room'})); };
+  ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'room_created') {
+        myRoomCode = msg.code; localStorage.setItem('ttt_room', msg.code);
+        roomCodeDisplay.textContent = myRoomCode;
+        roomCodeArea.style.display = 'block';
+        lobbyStatus.textContent = '✅ Room created! Share the 6-digit code above.';
+      } else if (msg.type === 'opponent_joined') {
+        lobbyStatus.textContent = '✅ Opponent joined! Starting game...';
+        waitingMsg.style.display = 'none';
+        setTimeout(() => startGame('online', true), 500);
+      } else if (msg.type === 'game_data' && onlineConn._onData) {
+        onlineConn._onData(msg.data);
+      } else if (msg.type === 'new_game' && onlineConn._onData) {
+        onlineConn._onData({type:'new_game'});
+      } else if (msg.type === 'opponent_disconnected' && onlineConn._onClose) {
+        onlineConn._onClose();
+      }
+    } catch(e) {}
+  };
+  ws.onerror = () => { lobbyStatus.textContent = '❌ Connection error.'; roomCodeArea.style.display='none'; enableLobbyBtns(); };
 }
 
 /* ---- Join Room ---- */
 btnJoinRoom.addEventListener('click', () => {
-  cleanupOnline();
-  resetLobbyUI();
-  joinArea.style.display = 'block';
+  cleanupOnline(); resetLobbyUI(); joinArea.style.display='block';
   lobbyStatus.textContent = 'Enter the 6-digit room code from your friend.';
-  joinInput.value = '';
-  setTimeout(() => joinInput.focus(), 100);
+  joinInput.value=''; setTimeout(()=>joinInput.focus(),100);
 });
-
 btnJoinSubmit.addEventListener('click', joinRoom);
-joinInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') joinRoom(); });
+joinInput.addEventListener('keydown', (e) => { if (e.key==='Enter') joinRoom(); });
 
 function joinRoom() {
   const code = joinInput.value.trim().toUpperCase();
   if (code.length !== 6) { lobbyStatus.textContent = '⚠️ Code must be exactly 6 characters.'; return; }
-  disableLobbyBtns();
-  lobbyStatus.textContent = '⏳ Connecting...';
-
+  disableLobbyBtns(); lobbyStatus.textContent = '⏳ Connecting...';
   let joinAttempts = 0;
   function stillJoining() { return lobbySc.style.display !== 'none' && joinArea.style.display !== 'none'; }
-  function retryJoin() {
-    if (!stillJoining()) { cleanupOnline(); enableLobbyBtns(); return; }
-    joinAttempts++;
-    if (joinAttempts < 3) {
-      lobbyStatus.textContent = `⏳ Retrying (${joinAttempts}/3)...`;
-      cleanupOnline();
-      setTimeout(doJoin, 500);
-    } else {
-      lobbyStatus.textContent = '❌ Connection failed after 3 attempts. Check the code and try again.';
-      cleanupOnline();
-      enableLobbyBtns();
-    }
-  }
   function doJoin() {
     if (!stillJoining()) { cleanupOnline(); enableLobbyBtns(); return; }
-    onlinePeer = newPeer(undefined, { debug: 0 });
-    onlinePeer.on('open', () => {
-      if (!stillJoining()) { cleanupOnline(); enableLobbyBtns(); return; }
-      const conn = onlinePeer.connect(code, { serialization: 'json' });
-      onlineConn = conn;
-      const timeout = setTimeout(() => {
-        if (stillJoining() && !conn.open) { retryJoin(); }
-      }, 30000);
-      conn.on('open', () => {
-        if (!stillJoining()) { cleanupOnline(); enableLobbyBtns(); return; }
-        clearTimeout(timeout);
-        localStorage.setItem('ttt_room', code);
-        localStorage.setItem('ttt_ishost', 'false');
-        lobbyStatus.textContent = '✅ Connected! Starting game...';
-        conn.on('data', (data) => { handleOnlineData(data); });
-        conn.on('close', () => {
-          onlineConn = null;
-          if (!gameOver && mode === 'online' && gameSc.style.display !== 'none') {
-            lobbyStatus.textContent = '❌ Opponent disconnected.';
-            statusEl.textContent = '❌ Opponent disconnected.';
-            opponentLeft = true;
-            restartBtn.textContent = '↻ Opponent left — New Game';
-          }
-        });
-        setTimeout(() => startGame('online', false), 500);
-      });
-      conn.on('error', () => { if (stillJoining()) { clearTimeout(timeout); retryJoin(); } });
-    });
-    onlinePeer.on('error', () => { if (stillJoining()) retryJoin(); });
+    cleanupOnline();
+    ws = new WebSocket(SERVER_URL);
+    let responded = false;
+    const timeout = setTimeout(() => {
+      if (!responded && stillJoining()) {
+        if (ws) { try{ws.close()}catch(e){} ws=null; }
+        joinAttempts++;
+        if (joinAttempts < 3) { lobbyStatus.textContent = `⏳ Retrying (${joinAttempts}/3)...`; setTimeout(doJoin, 1000); }
+        else { lobbyStatus.textContent = '❌ Connection failed after 3 attempts.'; cleanupOnline(); enableLobbyBtns(); }
+      }
+    }, 8000);
+    attachWsHandlers();
+    ws.onopen = () => { responded = true; clearTimeout(timeout); ws.send(JSON.stringify({type:'join_room', code})); };
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'joined') {
+          responded = true; clearTimeout(timeout);
+          lobbyStatus.textContent = '✅ Connected! Starting game...';
+          setTimeout(() => startGame('online', false), 500);
+          return;
+        }
+        if (msg.type === 'error') {
+          responded = true; clearTimeout(timeout);
+          lobbyStatus.textContent = '❌ '+msg.message; cleanupOnline(); enableLobbyBtns();
+          return;
+        }
+        if (msg.type === 'game_data' && onlineConn._onData) onlineConn._onData(msg.data);
+        else if (msg.type === 'new_game' && onlineConn._onData) onlineConn._onData({type:'new_game'});
+        else if (msg.type === 'opponent_disconnected' && onlineConn._onClose) onlineConn._onClose();
+      } catch(e) {}
+    };
+    ws.onerror = () => { if (stillJoining() && !responded) { /* timeout handles retry */ } };
   }
   doJoin();
 }
 
 /* ---- Random Match ---- */
-btnRandom.addEventListener('click', findRandomMatch);
-const RANDOM_PREFIX = 'R_';
-
-function findRandomMatch() {
-  cleanupOnline();
-  resetLobbyUI();
-  disableLobbyBtns();
-  randomSearching = true;
+btnRandom.addEventListener('click', () => {
+  cleanupOnline(); resetLobbyUI(); disableLobbyBtns(); randomSearching = true;
   lobbyStatus.textContent = '🔍 Searching for an opponent...';
-  tryRandomConnect();
-}
-
-function tryRandomConnect() {
-  if (!randomSearching) return;
-
-  onlinePeer = newPeer(undefined, { debug: 0 });
-
-  onlinePeer.on('open', () => {
-    // Try to find waiting players by trying common waiting IDs
-    // We'll connect to a fixed known lobby, or create one if none exists
-    tryConnectToLobby();
-  });
-
-  onlinePeer.on('error', () => {
-    // retry
-    if (onlinePeer) onlinePeer.destroy();
-    if (randomSearching) setTimeout(tryRandomConnect, 1500);
-  });
-}
-
-function tryConnectToLobby() {
-  const lobbyId = RANDOM_PREFIX + 'LOBBY';
-  const conn = onlinePeer.connect(lobbyId, { serialization: 'json' });
-  let responded = false;
-
-  const timeout = setTimeout(() => {
-    if (!responded) {
-      // Nobody waiting, become the lobby host
-      conn.close();
-      if (onlinePeer) onlinePeer.destroy();
-      becomeLobbyHost();
-    }
-  }, 2000);
-
-  conn.on('open', () => {
-    responded = true;
-    clearTimeout(timeout);
-    // Connected to a waiting host!
-    onlineConn = conn;
-    lobbyStatus.textContent = '✅ Match found! Starting game...';
-    conn.on('data', (data) => { handleOnlineData(data); });
-    conn.on('close', () => {
-      onlineConn = null;
-      if (!gameOver && mode === 'online' && !randomSearching && gameSc.style.display !== 'none') {
-        lobbyStatus.textContent = '❌ Opponent disconnected.';
-        statusEl.textContent = '❌ Opponent disconnected.';
-        opponentLeft = true;
-        restartBtn.textContent = '↻ Opponent left — New Game';
-      } else if (randomSearching) {
+  ws = new WebSocket(SERVER_URL);
+  attachWsHandlers();
+  ws.onopen = () => { ws.send(JSON.stringify({type:'random_match'})); };
+  ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'match_found') {
+        lobbyStatus.textContent = '✅ Match found! Starting game...';
         randomSearching = false; enableLobbyBtns();
+        setTimeout(() => startGame('online', msg.role === 'host'), 500);
+        return;
       }
-    });
-    setTimeout(() => { randomSearching = false; enableLobbyBtns(); startGame('online', false); }, 500);
-  });
-
-  conn.on('error', () => {
-    clearTimeout(timeout);
-    if (!responded) {
-      if (onlinePeer) onlinePeer.destroy();
-      becomeLobbyHost();
-    }
-  });
-}
-
-function becomeLobbyHost() {
-  if (!randomSearching) return;
-  lobbyStatus.textContent = '⏳ Waiting for a random opponent...';
-
-  onlinePeer = newPeer(RANDOM_PREFIX + 'LOBBY', { debug: 0 });
-
-  onlinePeer.on('open', () => {
-    // Waiting for someone to connect
-  });
-
-  onlinePeer.on('connection', (conn) => {
-    onlineConn = conn;
-    lobbyStatus.textContent = '✅ Match found! Starting game...';
-    conn.on('data', (data) => { handleOnlineData(data); });
-    conn.on('close', () => {
-      onlineConn = null;
-      if (!gameOver && mode === 'online' && gameSc.style.display !== 'none') {
-        lobbyStatus.textContent = '❌ Opponent disconnected.';
-        statusEl.textContent = '❌ Opponent disconnected.';
-        opponentLeft = true;
-        restartBtn.textContent = '↻ Opponent left — New Game';
-      }
-    });
-    setTimeout(() => { randomSearching = false; enableLobbyBtns(); startGame('online', true); }, 500);
-  });
-
-  onlinePeer.on('error', (err) => {
-    if (err.type === 'unavailable-id') {
-      // Someone else is host, try connecting again
-      if (onlinePeer) onlinePeer.destroy();
-      if (randomSearching) {
-        setTimeout(() => {
-          if (onlinePeer) onlinePeer.destroy();
-          tryRandomConnect();
-        }, 1000);
-      }
-    } else {
-      lobbyStatus.textContent = '❌ Error: ' + err.type;
-      if (randomSearching) setTimeout(tryRandomConnect, 2000);
-    }
-  });
-}
+      if (msg.type === 'searching') { lobbyStatus.textContent = '⏳ Searching for opponent...'; return; }
+      if (msg.type === 'game_data' && onlineConn._onData) onlineConn._onData(msg.data);
+      else if (msg.type === 'new_game' && onlineConn._onData) onlineConn._onData({type:'new_game'});
+      else if (msg.type === 'opponent_disconnected' && onlineConn._onClose) onlineConn._onClose();
+    } catch(e) {}
+  };
+  ws.onerror = () => { if (randomSearching) { lobbyStatus.textContent = '❌ Connection error. Retrying...'; setTimeout(() => { if (randomSearching) { cleanupOnline(); btnRandom.click(); } }, 2000); } };
+});
 
 /* ---- Handle incoming online data ---- */
 function handleOnlineData(data) {
-  if (data.type === 'ping') { if (onlineConn) { try { onlineConn.send({ type: 'pong' }); } catch(e) {} } return; }
-  if (data.type === 'pong') { return; }
   if (data.type === 'new_game') {
     board = Array(9).fill(null);
     currentPlayer = amIHost ? 'X' : 'O';
@@ -1114,12 +978,9 @@ function celebrate(winner, gameMode) {
 }
 
 /* ==================== RECONNECT ==================== */
-(function initReconnect() {
-  const savedRoom = localStorage.getItem('ttt_room');
-  const savedHost = localStorage.getItem('ttt_ishost');
-  if (savedRoom) {
-    lobbyStatus.textContent = `🔄 Rejoin room ${savedRoom}? Create or join a new game to dismiss.`;
-  }
+(function() {
+  const r = localStorage.getItem('ttt_room');
+  if (r) lobbyStatus.textContent = '🔄 Rejoin room ' + r + '? Create or join to dismiss.';
 })();
 
 function animateCelebration() {

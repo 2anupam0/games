@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Football Legends - Penalty Shootout</title>
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<!-- WebSocket replaces PeerJS for online multiplayer -->
 <style>
 *{margin:0;padding:0;box-sizing:border-box;user-select:none;-webkit-user-select:none}
 body{font-family:'Segoe UI',sans-serif;background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);min-height:100vh;display:flex;justify-content:center;align-items:center;overflow:hidden}
@@ -695,24 +695,48 @@ function resetOnlineGame(){
   updateScoreDisplay();initRound();draw();
 }
 
-/* ==================== ONLINE ==================== */
-let onlineConn=null,onlinePeer=null,myRoomCode=null,randomSearching=false,pingInterval=null;
-const ICE_SERVERS=[
-  {urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'},{urls:'stun:stun2.l.google.com:19302'},
-  {urls:'stun:stun3.l.google.com:19302'},{urls:'stun:stun4.l.google.com:19302'},{urls:'stun:stun.cloudflare.com:3478'},
-  {urls:'turn:openrelay.metered.ca:80'},{urls:'turn:openrelay.metered.ca:443?transport=tcp'},{urls:'turn:openrelay.metered.ca:443?transport=udp'},
-];
-function newPeer(id,extra){return new Peer(id,{...extra,config:{iceServers:ICE_SERVERS,iceCandidatePoolSize:10}})}
-function startHeartbeat(){stopHeartbeat();pingInterval=setInterval(()=>{if(onlineConn&&onlineConn.open){try{onlineConn.send({type:'ping'})}catch(e){}}},25000);}
-function stopHeartbeat(){if(pingInterval){clearInterval(pingInterval);pingInterval=null}}
+/* ==================== ONLINE (WebSocket) ==================== */
+const SERVER_URL = 'ws://localhost:3000'; // ← Change for production: e.g., 'wss://your-app.onrender.com'
+let ws = null;
+let myRoomCode = null;
+let randomSearching = false;
+
+/* Wraps ws.send to keep resolveShot/endMatch/resetOnlineGame unchanged.
+   Game messages are wrapped in {type:'game_data', data: {...}} for the server. */
+const onlineConn = {
+  send: function(obj) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({type:'game_data', data: obj}));
+    }
+  },
+  get open() { return ws && ws.readyState === WebSocket.OPEN; },
+  close: function() { if (ws) { try{ws.close()}catch(e){} ws = null; } },
+  _onData: null,
+  _onClose: null,
+};
+
 function cleanupOnline(){
-  stopHeartbeat();randomSearching=false;
-  if(onlineConn){try{onlineConn.close()}catch(e){}onlineConn=null}
-  if(onlinePeer){try{onlinePeer.destroy()}catch(e){}onlinePeer=null}
-  myRoomCode=null;
-  localStorage.removeItem('fl_room');localStorage.removeItem('fl_ishost');
+  randomSearching = false;
+  if (ws) { try{ws.close()}catch(e){} ws = null; }
+  onlineConn._onData = null;
+  onlineConn._onClose = null;
+  myRoomCode = null;
+  localStorage.removeItem('fl_room');
 }
-function genCode(){const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let r='';for(let i=0;i<6;i++)r+=c[Math.floor(Math.random()*c.length)];return r}
+
+/* Shared WebSocket message dispatcher */
+function attachWsHandlers(ws, extra) {
+  ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'game_data' && onlineConn._onData) onlineConn._onData(msg.data);
+      else if (msg.type === 'new_game' && onlineConn._onData) onlineConn._onData({type:'new_game'});
+      else if (msg.type === 'opponent_disconnected' && onlineConn._onClose) onlineConn._onClose();
+      else if (msg.type === 'error') { if (extra && extra.onError) extra.onError(msg.message); }
+    } catch(e) {}
+  };
+  ws.onclose = () => { ws = null; };
+}
 
 const btnCreate=document.getElementById('btnCreateRoom'),btnJoin=document.getElementById('btnJoinRoom'),btnRand=document.getElementById('btnRandom');
 const btnCancel=document.getElementById('btnCancelRoom'),btnJoinSubmit=document.getElementById('btnJoinSubmit');
@@ -725,100 +749,158 @@ function showLobby(){showScreen(lobbySc);enableLobbyBtns();resetLobbyUI();lobbyS
 function resetLobbyUI(){roomCodeArea.style.display='none';joinArea.style.display='none';waitingMsg.style.display='block'}
 function enableLobbyBtns(){btnCreate.disabled=false;btnJoin.disabled=false;btnRand.disabled=false;btnJoinSubmit.disabled=false;joinInput.disabled=false}
 function disableLobbyBtns(){btnCreate.disabled=true;btnJoin.disabled=true;btnRand.disabled=true;btnJoinSubmit.disabled=true;joinInput.disabled=true}
-function backFromLobby(){cleanupOnline();showScreen(menuSc)}
+function backFromLobby(){
+  if (randomSearching && ws) ws.send(JSON.stringify({type:'cancel_match'}));
+  cleanupOnline(); showScreen(menuSc);
+}
 
+/* ------------------- Create Room ------------------- */
 function createRoom(){
-  cleanupOnline();resetLobbyUI();disableLobbyBtns();lobbyStatus.textContent='⏳ Creating room...';
-  const code=genCode();
-  onlinePeer=newPeer(code,{debug:0});
-  onlinePeer.on('open',(id)=>{myRoomCode=id;localStorage.setItem('fl_room',id);localStorage.setItem('fl_ishost','true');roomCodeDisplay.textContent=myRoomCode;roomCodeArea.style.display='block';lobbyStatus.textContent='✅ Room created! Share the 6-digit code above.'});
-  onlinePeer.on('connection',(conn)=>{
-    onlineConn=conn;conn.on('data',(d)=>handleOnlineData(d));
-    conn.on('close',()=>{onlineConn=null;if(!G.gameOver&&G.mode==='online'&&gameSc.style.display!=='none'){G.opponentLeft=true;}});
-    lobbyStatus.textContent='✅ Opponent joined! Starting game...';waitingMsg.style.display='none';
-    setTimeout(()=>startGame('online',true),500);
+  cleanupOnline(); resetLobbyUI(); disableLobbyBtns();
+  lobbyStatus.textContent = '⏳ Creating room...';
+  ws = new WebSocket(SERVER_URL);
+  onlineConn._onData = handleOnlineData;
+  onlineConn._onClose = () => {
+    if (!G.gameOver && G.mode==='online' && gameSc.style.display!=='none') G.opponentLeft = true;
+  };
+  ws.onopen = () => { ws.send(JSON.stringify({type:'create_room'})); };
+  attachWsHandlers(ws, {
+    onError: (msg) => { lobbyStatus.textContent='❌ '+msg; roomCodeArea.style.display='none'; enableLobbyBtns(); }
   });
-  onlinePeer.on('error',(err)=>{if(err.type==='unavailable-id'){if(onlinePeer)onlinePeer.destroy();createRoom()}else{lobbyStatus.textContent='❌ Error: '+err.type;roomCodeArea.style.display='none';enableLobbyBtns()}});
+  ws.onmessage = ((orig) => function(e) {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'room_created') {
+        myRoomCode = msg.code; localStorage.setItem('fl_room', msg.code);
+        roomCodeDisplay.textContent = myRoomCode;
+        roomCodeArea.style.display = 'block';
+        lobbyStatus.textContent = '✅ Room created! Share the 6-digit code above.';
+        return;
+      }
+      if (msg.type === 'opponent_joined') {
+        lobbyStatus.textContent = '✅ Opponent joined! Starting game...';
+        waitingMsg.style.display = 'none';
+        setTimeout(() => startGame('online', true), 500);
+        return;
+      }
+    } catch(e) {}
+    if (orig) orig.call(ws, e);
+  })(ws.onmessage);
 }
-btnCreate.addEventListener('click',createRoom);
+btnCreate.addEventListener('click', createRoom);
 
-btnCancel.addEventListener('click',()=>{cleanupOnline();resetLobbyUI();enableLobbyBtns();lobbyStatus.textContent='Room cancelled.'});
-btnJoin.addEventListener('click',()=>{cleanupOnline();resetLobbyUI();joinArea.style.display='block';lobbyStatus.textContent='Enter the 6-digit room code from your friend.';joinInput.value='';setTimeout(()=>joinInput.focus(),100)});
-btnJoinSubmit.addEventListener('click',joinRoomFn);
-joinInput.addEventListener('keydown',e=>{if(e.key==='Enter')joinRoomFn()});
+btnCancel.addEventListener('click', () => { cleanupOnline(); resetLobbyUI(); enableLobbyBtns(); lobbyStatus.textContent='Room cancelled.'; });
+btnJoin.addEventListener('click', () => { cleanupOnline(); resetLobbyUI(); joinArea.style.display='block'; lobbyStatus.textContent='Enter the 6-digit room code from your friend.'; joinInput.value=''; setTimeout(()=>joinInput.focus(),100); });
+btnJoinSubmit.addEventListener('click', joinRoomFn);
+joinInput.addEventListener('keydown', e => { if (e.key==='Enter') joinRoomFn(); });
 
+/* ------------------- Join Room ------------------- */
 function joinRoomFn(){
-  const code=joinInput.value.trim().toUpperCase();
-  if(code.length!==6){lobbyStatus.textContent='⚠️ Code must be exactly 6 characters.';return}
-  disableLobbyBtns();lobbyStatus.textContent='⏳ Connecting...';
-  let joinAttempts=0;
-  function stillJoining(){return lobbySc.style.display!=='none'&&joinArea.style.display!=='none'}
-  function retryJoinFn(){
-    if(!stillJoining()){cleanupOnline();enableLobbyBtns();return}
-    joinAttempts++;
-    if(joinAttempts<3){lobbyStatus.textContent=`⏳ Retrying (${joinAttempts}/3)...`;cleanupOnline();setTimeout(doJoinFn,500);}
-    else{lobbyStatus.textContent='❌ Connection failed after 3 attempts.';cleanupOnline();enableLobbyBtns()}
-  }
-  function doJoinFn(){
-    if(!stillJoining()){cleanupOnline();enableLobbyBtns();return}
-    onlinePeer=newPeer(undefined,{debug:0});
-    onlinePeer.on('open',()=>{
-      if(!stillJoining()){cleanupOnline();enableLobbyBtns();return}
-      const conn=onlinePeer.connect(code,{serialization:'json'});onlineConn=conn;
-      const t=setTimeout(()=>{if(stillJoining()&&!conn.open)retryJoinFn()},30000);
-      conn.on('open',()=>{clearTimeout(t);localStorage.setItem('fl_room',code);localStorage.setItem('fl_ishost','false');lobbyStatus.textContent='✅ Connected! Starting game...';conn.on('data',(d)=>handleOnlineData(d));conn.on('close',()=>{onlineConn=null;if(!G.gameOver&&G.mode==='online'&&gameSc.style.display!=='none'){G.opponentLeft=true;}});setTimeout(()=>startGame('online',false),500);});
-      conn.on('error',()=>{if(stillJoining()){clearTimeout(t);retryJoinFn()}});
+  const code = joinInput.value.trim().toUpperCase();
+  if (code.length !== 6) { lobbyStatus.textContent = '⚠️ Code must be exactly 6 characters.'; return; }
+  disableLobbyBtns(); lobbyStatus.textContent = '⏳ Connecting...';
+  let joinAttempts = 0;
+  function stillJoining(){ return lobbySc.style.display!=='none' && joinArea.style.display!=='none'; }
+  function doJoin(){
+    if (!stillJoining()) { cleanupOnline(); enableLobbyBtns(); return; }
+    cleanupOnline();
+    ws = new WebSocket(SERVER_URL);
+    let responded = false;
+    const timeout = setTimeout(() => {
+      if (!responded && stillJoining()) {
+        if (ws) { try{ws.close()}catch(e){} ws=null; }
+        joinAttempts++;
+        if (joinAttempts < 3) {
+          lobbyStatus.textContent = `⏳ Retrying (${joinAttempts}/3)...`;
+          setTimeout(doJoin, 1000);
+        } else {
+          lobbyStatus.textContent = '❌ Connection failed after 3 attempts.';
+          cleanupOnline(); enableLobbyBtns();
+        }
+      }
+    }, 8000);
+    onlineConn._onData = handleOnlineData;
+    onlineConn._onClose = () => {
+      if (!G.gameOver && G.mode==='online' && gameSc.style.display!=='none') G.opponentLeft = true;
+    };
+    ws.onopen = () => { responded = true; clearTimeout(timeout); ws.send(JSON.stringify({type:'join_room', code})); };
+    attachWsHandlers(ws, {
+      onError: (msg) => {
+        if (stillJoining()) { lobbyStatus.textContent='❌ '+msg; cleanupOnline(); enableLobbyBtns(); }
+      }
     });
-    onlinePeer.on('error',()=>{if(stillJoining())retryJoinFn()});
+    ws.onmessage = ((orig) => function(e) {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'joined') {
+          responded = true; clearTimeout(timeout);
+          lobbyStatus.textContent = '✅ Connected! Starting game...';
+          setTimeout(() => startGame('online', false), 500);
+          return;
+        }
+        if (msg.type === 'error') {
+          responded = true; clearTimeout(timeout);
+          lobbyStatus.textContent = '❌ '+msg.message;
+          cleanupOnline(); enableLobbyBtns();
+          return;
+        }
+      } catch(e) {}
+      if (orig) orig.call(ws, e);
+    })(ws.onmessage);
   }
-  doJoinFn();
+  doJoin();
 }
 
-const RANDOM_PREFIX='FL_';
-btnRand.addEventListener('click',()=>{
-  cleanupOnline();resetLobbyUI();disableLobbyBtns();randomSearching=true;lobbyStatus.textContent='🔍 Searching for an opponent...';
-  tryRandomConnect();
+/* ------------------- Random Match ------------------- */
+btnRand.addEventListener('click', () => {
+  cleanupOnline(); resetLobbyUI(); disableLobbyBtns(); randomSearching = true;
+  lobbyStatus.textContent = '🔍 Searching for an opponent...';
+  ws = new WebSocket(SERVER_URL);
+  onlineConn._onData = handleOnlineData;
+  onlineConn._onClose = () => {
+    if (!G.gameOver && G.mode==='online' && gameSc.style.display!=='none') G.opponentLeft = true;
+  };
+  ws.onopen = () => { ws.send(JSON.stringify({type:'random_match'})); };
+  attachWsHandlers(ws);
+  ws.onmessage = ((orig) => function(e) {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'match_found') {
+        lobbyStatus.textContent = '✅ Match found! Starting game...';
+        randomSearching = false; enableLobbyBtns();
+        setTimeout(() => startGame('online', msg.role === 'host'), 500);
+        return;
+      }
+      if (msg.type === 'searching') {
+        lobbyStatus.textContent = '⏳ Searching for opponent...';
+        return;
+      }
+    } catch(e) {}
+    if (orig) orig.call(ws, e);
+  })(ws.onmessage);
 });
-function tryRandomConnect(){
-  if(!randomSearching)return;
-  onlinePeer=newPeer(undefined,{debug:0});
-  onlinePeer.on('open',()=>{
-    const lobbyId=RANDOM_PREFIX+'LOBBY';const conn=onlinePeer.connect(lobbyId,{serialization:'json'});let responded=false;
-    const t=setTimeout(()=>{if(!responded){conn.close();if(onlinePeer)onlinePeer.destroy();becomeLobbyHost()}},2000);
-    conn.on('open',()=>{responded=true;clearTimeout(t);onlineConn=conn;lobbyStatus.textContent='✅ Match found! Starting game...';conn.on('data',(d)=>handleOnlineData(d));conn.on('close',()=>{onlineConn=null;if(!G.gameOver&&G.mode==='online'&&gameSc.style.display!=='none'){G.opponentLeft=true;}});setTimeout(()=>{randomSearching=false;enableLobbyBtns();startGame('online',false)},500);});
-    conn.on('error',()=>{clearTimeout(t);if(!responded){if(onlinePeer)onlinePeer.destroy();becomeLobbyHost()}});
-  });
-  onlinePeer.on('error',()=>{if(onlinePeer)onlinePeer.destroy();if(randomSearching)setTimeout(tryRandomConnect,1500)});
-}
-function becomeLobbyHost(){
-  if(!randomSearching)return;lobbyStatus.textContent='⏳ Waiting for a random opponent...';
-  onlinePeer=newPeer(RANDOM_PREFIX+'LOBBY',{debug:0});
-  onlinePeer.on('connection',(conn)=>{onlineConn=conn;lobbyStatus.textContent='✅ Match found! Starting game...';conn.on('data',(d)=>handleOnlineData(d));conn.on('close',()=>{onlineConn=null;if(!G.gameOver&&G.mode==='online'&&gameSc.style.display!=='none'){G.opponentLeft=true;}});setTimeout(()=>{randomSearching=false;enableLobbyBtns();startGame('online',true)},500);});
-  onlinePeer.on('error',(err)=>{if(err.type==='unavailable-id'){if(onlinePeer)onlinePeer.destroy();if(randomSearching)setTimeout(()=>{if(onlinePeer)onlinePeer.destroy();tryRandomConnect()},1000)}else{lobbyStatus.textContent='❌ Error: '+err.type;if(randomSearching)setTimeout(tryRandomConnect,2000)}});
-}
 
+/* ------------------- Handle incoming game data ------------------- */
 function handleOnlineData(data){
-  if(data.type==='ping'){if(onlineConn)try{onlineConn.send({type:'pong'})}catch(e){};return}
-  if(data.type==='pong')return;
-  if(data.type==='new_game'){
-    if(G.mode==='online')resetOnlineGame();
+  if (data.type === 'new_game') {
+    if (G.mode === 'online') resetOnlineGame();
     return;
   }
-  if(data.type==='game_over'){
-    G.gameOver=true;G.phase='gameover';
-    controlsArea.style.display='flex';
-    if(data.draw){infoText.textContent='🤝 It\'s a draw!';celebrate('draw')}
-    else if(data.winner==='opponent'){infoText.textContent='🏆 YOU WIN!';celebrate('player')}
-    else{infoText.textContent='😵 You lose!';celebrate('opponent')}
+  if (data.type === 'game_over') {
+    G.gameOver = true; G.phase = 'gameover';
+    controlsArea.style.display = 'flex';
+    if (data.draw) { infoText.textContent = '🤝 It\'s a draw!'; celebrate('draw'); }
+    else if (data.winner === 'opponent') { infoText.textContent = '🏆 YOU WIN!'; celebrate('player'); }
+    else { infoText.textContent = '😵 You lose!'; celebrate('opponent'); }
     return;
   }
-  if(data.type==='shot'){
+  if (data.type === 'shot') {
     receiveOpponentShot(data);
   }
 }
 
 /* ==================== RECONNECT ==================== */
-(function(){const r=localStorage.getItem('fl_room');if(r){lobbyStatus.textContent=`🔄 Rejoin room ${r}? Create or join to dismiss.`}})();
+(function(){ const r = localStorage.getItem('fl_room'); if (r) { lobbyStatus.textContent = '🔄 Rejoin room '+r+'? Create or join to dismiss.'; }})();
 
 /* ==================== GAME LOOP ==================== */
 function gameLoop(){update();draw();requestAnimationFrame(gameLoop)}
