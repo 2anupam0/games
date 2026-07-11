@@ -254,92 +254,6 @@ function inBounds(i) { return i>=0 && i<64; }
 
 function cloneBoard(b) { return [...b]; }
 
-/* Generate pseudo-legal moves */
-function genMoves(board, color) {
-  const moves = [];
-  for (let i=0; i<64; i++) {
-    const p = board[i];
-    if (!p || colorOf(p) !== color) continue;
-    const type = p.toUpperCase();
-    const r = Math.floor(i/8), f = i%8;
-
-    if (type === 'P') {
-      const dir = isWhite(p) ? -1 : 1;
-      const startRow = isWhite(p) ? 6 : 1;
-      const promoRow = isWhite(p) ? 0 : 7;
-      // forward
-      const ni = i + dir*8;
-      if (inBounds(ni) && !board[ni]) {
-        if (Math.floor(ni/8) === promoRow) {
-          for (const promo of ['Q','R','B','N']) moves.push({from:i,to:ni,promo:promo});
-        } else {
-          moves.push({from:i,to:ni});
-        }
-        // double
-        if (r === startRow) {
-          const n2 = i + dir*16;
-          if (!board[n2]) moves.push({from:i,to:n2,double:true});
-        }
-      }
-      // captures
-      for (const df of [-1,1]) {
-        const ni2 = i + dir*8 + df;
-        if (inBounds(ni2) && f+df>=0 && f+df<8) {
-          if (board[ni2] && colorOf(board[ni2]) === enemyColor(color)) {
-            if (Math.floor(ni2/8) === promoRow) {
-              for (const promo of ['Q','R','B','N']) moves.push({from:i,to:ni2,promo:promo});
-            } else {
-              moves.push({from:i,to:ni2});
-            }
-          }
-        }
-      }
-    } else if (type === 'N') {
-      for (const [dr,df] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]) {
-        const ni = i + dr*8 + df;
-        if (inBounds(ni) && Math.abs((i%8) - (ni%8)) <= 2) {
-          if (!board[ni] || colorOf(board[ni]) === enemyColor(color)) moves.push({from:i,to:ni});
-        }
-      }
-    } else if (type === 'B') {
-      for (const [dr,df] of [[-1,-1],[-1,1],[1,-1],[1,1]]) {
-        for (let s=1; s<8; s++) {
-          const ni = i + dr*s*8 + df*s;
-          if (!inBounds(ni) || Math.abs((i%8)-(ni%8)) !== s) break;
-          if (board[ni]) { if (colorOf(board[ni]) === enemyColor(color)) moves.push({from:i,to:ni}); break; }
-          moves.push({from:i,to:ni});
-        }
-      }
-    } else if (type === 'R') {
-      for (const [dr,df] of [[-1,0],[1,0],[0,-1],[0,1]]) {
-        for (let s=1; s<8; s++) {
-          const ni = i + dr*s*8 + df*s;
-          if (!inBounds(ni) || Math.abs((i%8)-(ni%8)) > s) break;
-          if (board[ni]) { if (colorOf(board[ni]) === enemyColor(color)) moves.push({from:i,to:ni}); break; }
-          moves.push({from:i,to:ni});
-        }
-      }
-    } else if (type === 'Q') {
-      for (const [dr,df] of [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]) {
-        for (let s=1; s<8; s++) {
-          const ni = i + dr*s*8 + df*s;
-          if (!inBounds(ni) || Math.abs((i%8)-(ni%8)) > s) break;
-          if (board[ni]) { if (colorOf(board[ni]) === enemyColor(color)) moves.push({from:i,to:ni}); break; }
-          moves.push({from:i,to:ni});
-        }
-      }
-    } else if (type === 'K') {
-      for (const [dr,df] of [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]) {
-        const ni = i + dr*8 + df;
-        if (inBounds(ni) && Math.abs((i%8)-(ni%8)) <= 1) {
-          if (!board[ni] || colorOf(board[ni]) === enemyColor(color)) moves.push({from:i,to:ni});
-        }
-      }
-    }
-  }
-  return moves;
-}
-
 /* Make move, returns new board */
 function makeMove(board, move, state) {
   const nb = cloneBoard(board);
@@ -423,72 +337,6 @@ function inCheck(board, color) {
   const ki = findKing(board, color);
   if (ki===-1) return false;
   return isAttacked(board, ki, enemyColor(color));
-}
-
-/* Legal moves filter */
-function legalMoves(board, color, state) {
-  const raw = genMoves(board, color);
-  const leg = [];
-  for (const m of raw) {
-    const nb = makeMove(board, m, state);
-    // check if own king in check after move
-    if (inCheck(nb, color)) continue;
-    // castling: cannot pass through check or be in check
-    if (m.castle) {
-      if (inCheck(board, color)) continue;
-      const midSq = m.to===6||m.to===62 ? (m.from+m.to)/2 : (m.from+m.to)/2;
-      if (isAttacked(board, midSq, enemyColor(color))) continue;
-      if (isAttacked(board, m.to, enemyColor(color))) continue;
-    }
-    leg.push(m);
-  }
-  // Add en passant and castling detection
-  // Re-generate with proper context
-  return leg;
-}
-
-/* Generate legal moves with castling and en passant */
-function genLegal(board, color, state) {
-  const moves = [];
-  const raw = genMoves(board, color);
-
-  for (const m of raw) {
-    // Simulate
-    const nb = cloneBoard(board);
-    const p = nb[m.from];
-    nb[m.to] = p;
-    nb[m.from] = null;
-    if (m.promo) nb[m.to] = isWhite(p) ? m.promo.toUpperCase() : m.promo.toLowerCase();
-
-    // En passant
-    if (m.double) {
-      // check if enemy pawn adjacent can capture
-      const epIdx = m.to + (isWhite(p)?8:-8);
-      if (Math.floor(m.to/8)===2||Math.floor(m.to/8)===5) {
-        for (const df of [-1,1]) {
-          const adj = m.to+df;
-          if (inBounds(adj) && board[adj]===(isWhite(p)?'p':'P')) {
-            // last move was double push to this square? we need state
-          }
-        }
-      }
-    }
-
-    // King safety
-    const ki = nb.indexOf(color==='w'?'K':'k');
-    if (ki===-1) continue;
-    if (isAttacked(nb, ki, enemyColor(color))) continue;
-
-    // Castling
-    if (m.castle) {
-      if (inCheck(board, color)) continue;
-    }
-
-    moves.push(m);
-  }
-
-  // Now properly handle castling and en passant with state
-  return legalMovesFull(board, color, state);
 }
 
 function legalMovesFull(board, color, state) {
@@ -668,7 +516,7 @@ function negamax(board, color, state, depth, alpha, beta, sign) {
 
 function updateState(piece, move, state, color) {
   const ns = { castling: {...state.castling}, ep: null };
-  if (move.double) ns.ep = move.to + (color==='w'?-8:8);
+  if (move.double) ns.ep = move.to + (color==='w'?8:-8);
   if (piece === 'K') { ns.castling.K = false; ns.castling.Q = false; }
   if (piece === 'k') { ns.castling.k = false; ns.castling.q = false; }
   if (move.from === 0 || move.to === 0) ns.castling.q = false;
@@ -1010,6 +858,7 @@ function startGame(m, host=true) {
   gameState={castling:{K:true,Q:true,k:true,q:true},ep:null};
   const labels={friend:'👥 vs Friend',computer:'🤖 vs Computer',online:'🌐 Online'};
   gameTitle.textContent='♚ CHESS '+(labels[mode]||'');
+  btnUndo.style.display = m==='online'?'none':'inline-block';
   render();
   if(m==='online')startHeartbeat();
 }
@@ -1075,7 +924,7 @@ function handleOnlineData(data){
     currentColor=enemyColor(currentColor);checkGameEnd();render();
   }
 }
-btnCreate.addEventListener('click',()=>{
+function createRoom(){
   cleanupOnline();resetLobbyUI();disableLobbyBtns();lobbyStatus.textContent='⏳ Creating room...';
   const code=genCode();
   onlinePeer=newPeer(code,{debug:0});
@@ -1087,7 +936,8 @@ btnCreate.addEventListener('click',()=>{
     setTimeout(()=>startGame('online',true),500);
   });
   onlinePeer.on('error',(err)=>{if(err.type==='unavailable-id'){if(onlinePeer)onlinePeer.destroy();createRoom()}else{lobbyStatus.textContent='❌ Error: '+err.type;roomCodeArea.style.display='none';enableLobbyBtns()}});
-});
+}
+btnCreate.addEventListener('click',createRoom);
 btnCancel.addEventListener('click',()=>{cleanupOnline();resetLobbyUI();enableLobbyBtns();lobbyStatus.textContent='Room cancelled.'});
 btnJoin.addEventListener('click',()=>{cleanupOnline();resetLobbyUI();joinArea.style.display='block';lobbyStatus.textContent='Enter the 6-digit room code from your friend.';joinInput.value='';setTimeout(()=>joinInput.focus(),100)});
 btnJoinSubmit.addEventListener('click',joinRoomFn);
@@ -1121,8 +971,9 @@ function joinRoomFn(){
       conn.on('error',()=>{if(stillJoining()){clearTimeout(t);retryJoinFn()}});
     });
     onlinePeer.on('error',()=>{if(stillJoining())retryJoinFn()});
+  }
+  doJoinFn();
 }
-doJoinFn();
 const RANDOM_PREFIX='C_R_';
 btnRand.addEventListener('click',()=>{
   cleanupOnline();resetLobbyUI();disableLobbyBtns();randomSearching=true;lobbyStatus.textContent='🔍 Searching for an opponent...';
