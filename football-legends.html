@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Football Legends - Penalty Shootout</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;user-select:none;-webkit-user-select:none}
 body{font-family:'Segoe UI',sans-serif;background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);min-height:100vh;display:flex;justify-content:center;align-items:center;overflow:hidden}
@@ -23,7 +24,6 @@ body{font-family:'Segoe UI',sans-serif;background:linear-gradient(135deg,#0f0c29
 .pitch-header h1{color:#fff;font-size:1.4rem;letter-spacing:2px;text-shadow:0 0 20px rgba(124,58,237,0.3)}
 .pitch-header .score{color:#ccc;font-size:1rem;margin-top:2px}
 canvas{display:block;z-index:2;touch-action:none}
-.game-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:3}
 #celebration-canvas{position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:999}
 .celebration-flash{position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:998;animation:flashAnim .6s ease-out forwards;pointer-events:none}
 @keyframes flashAnim{0%{opacity:.6}100%{opacity:0}}
@@ -47,6 +47,19 @@ canvas{display:block;z-index:2;touch-action:none}
   .menu-btn{padding:10px 16px;font-size:.9rem}
   .celebration-text{font-size:2rem}
 }
+#lobbyScreen{flex-direction:column;align-items:center;gap:1.5rem;width:380px}
+#lobbyScreen h2{color:#fff;font-size:1.5rem}
+.lobby-options{display:flex;gap:.8rem;flex-wrap:wrap;justify-content:center}
+.lobby-btn{padding:14px 24px;border:2px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.06);color:#fff;border-radius:14px;cursor:pointer;font-size:1rem;transition:all .3s}
+.lobby-btn:hover{background:rgba(124,58,237,0.2);border-color:#7c3aed}
+.lobby-btn:disabled{opacity:.4;cursor:not-allowed}
+.lobby-btn:disabled:hover{background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.1)}
+.lobby-input{padding:12px 20px;border:2px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.08);color:#fff;border-radius:12px;font-size:1.4rem;text-align:center;letter-spacing:6px;text-transform:uppercase;outline:none;width:180px;font-weight:bold}
+.lobby-input:focus{border-color:#7c3aed}
+.lobby-input::placeholder{letter-spacing:0;text-transform:none;font-size:.9rem;color:#666;font-weight:normal}
+.room-code{color:#7c3aed;font-size:2.5rem;font-weight:bold;letter-spacing:10px;background:rgba(124,58,237,0.1);padding:12px 32px;border-radius:12px;border:2px dashed rgba(124,58,237,0.3)}
+.waiting-msg{color:#fbbf24;font-size:1rem;animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 </style>
 </head>
 <body>
@@ -68,6 +81,32 @@ canvas{display:block;z-index:2;touch-action:none}
       <span class="icon">🧠</span>
       <span class="label">Hard<small>Keeper reads your aim</small></span>
     </button>
+    <button class="menu-btn" onclick="showLobby()">
+      <span class="icon">🌐</span>
+      <span class="label">Play Online<small>VS someone over the internet</small></span>
+    </button>
+  </div>
+</div>
+
+<div id="lobbyScreen" class="screen">
+  <button class="back-btn" onclick="backFromLobby()">← Back to menu</button>
+  <h2>🌐 Play Online</h2>
+  <div class="lobby-options">
+    <button class="lobby-btn" id="btnCreateRoom">🏠 Create Room</button>
+    <button class="lobby-btn" id="btnJoinRoom">🔑 Join Room</button>
+    <button class="lobby-btn" id="btnRandom">🎲 Random</button>
+  </div>
+  <div id="lobbyStatus" style="color:#aaa;font-size:.9rem;">Start by creating, joining, or finding a random match</div>
+  <div id="roomCodeArea" style="display:none;text-align:center;">
+    <p style="color:#888;margin-bottom:8px;">Share this 6-digit code with your friend:</p>
+    <div class="room-code" id="roomCodeDisplay"></div>
+    <p class="waiting-msg" id="waitingMsg">⏳ Waiting for opponent to join...</p>
+    <button class="btn btn-outline" id="btnCancelRoom" style="margin-top:8px;">Cancel</button>
+  </div>
+  <div id="joinArea" style="display:none;text-align:center;">
+    <p style="color:#888;margin-bottom:8px;">Enter 6-digit room code:</p>
+    <input class="lobby-input" id="joinInput" placeholder="000000" maxlength="6" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">
+    <button class="btn" id="btnJoinSubmit" style="margin-top:12px;display:block;width:100%;">Join</button>
   </div>
 </div>
 
@@ -75,10 +114,10 @@ canvas{display:block;z-index:2;touch-action:none}
   <button class="back-btn" onclick="backToMenu()">← Menu</button>
   <div class="pitch-header">
     <h1 id="gameTitle">⚽ PENALTY SHOOTOUT</h1>
-    <div class="score" id="scoreDisplay">You 0 - 0 Computer</div>
+    <div class="score" id="scoreDisplay">You 0 - 0 Opponent</div>
   </div>
   <canvas id="gameCanvas"></canvas>
-  <div class="info-text" id="infoText">Click the goal to aim, then time your power!</div>
+  <div class="info-text" id="infoText"></div>
   <div class="controls" id="controlsArea" style="display:none">
     <button class="btn" id="btnRestart">↻ New Match</button>
     <button class="btn btn-outline" onclick="backToMenu()">← Menu</button>
@@ -90,6 +129,7 @@ canvas{display:block;z-index:2;touch-action:none}
 <script>
 /* ==================== SETUP ==================== */
 const menuSc=document.getElementById('menuScreen');
+const lobbySc=document.getElementById('lobbyScreen');
 const gameSc=document.getElementById('gameScreen');
 const canvas=document.getElementById('gameCanvas');
 const ctx=canvas.getContext('2d');
@@ -115,7 +155,6 @@ const cctx=celebCanvas.getContext('2d');
 let particles=[],celebrationActive=false,animFrame=null;
 function resizeCeleb(){celebCanvas.width=window.innerWidth;celebCanvas.height=window.innerHeight}
 window.addEventListener('resize',resizeCeleb);resizeCeleb();
-
 class Particle {
   constructor(){this.reset()}
   reset(){
@@ -135,9 +174,7 @@ class Particle {
     cctx.restore();
   }
 }
-
 function burstConfetti(c){for(let i=0;i<c;i++){const p=new Particle();p.x=celebCanvas.width/2+(Math.random()-0.5)*celebCanvas.width*0.6;p.y=celebCanvas.height/2;p.speedY=(Math.random()-0.5)*8-6;p.speedX=(Math.random()-0.5)*10;particles.push(p)}}
-
 function celebrate(winner){
   if(celebrationActive)return;celebrationActive=true;particles=[];
   const text=document.createElement('div');
@@ -145,19 +182,18 @@ function celebrate(winner){
   const flash=document.createElement('div');
   flash.className='celebration-flash';
   if(winner==='player'){text.textContent='🏆 YOU WIN!';text.style.color='#22c55e';flash.style.background='radial-gradient(circle,#22c55e,#000)'}
-  else if(winner==='computer'){text.textContent='😵 YOU LOSE';text.style.color='#ef4444';flash.style.background='radial-gradient(circle,#ef4444,#000)'}
+  else if(winner==='opponent'){text.textContent='😵 YOU LOSE';text.style.color='#ef4444';flash.style.background='radial-gradient(circle,#ef4444,#000)'}
   else{text.textContent='🤝 DRAW';text.style.color='#fbbf24';flash.style.background='radial-gradient(circle,#fbbf24,#000)'}
   document.body.appendChild(flash);
   document.body.appendChild(text);
   setTimeout(()=>flash.remove(),700);
   setTimeout(()=>text.remove(),1500);
-  burstConfetti(winner==='player'?350:winner==='computer'?200:250);
-  setTimeout(()=>burstConfetti(winner==='player'?250:winner==='computer'?120:180),600);
-  setTimeout(()=>burstConfetti(winner==='player'?180:winner==='computer'?80:120),1200);
+  burstConfetti(winner==='player'?350:winner==='opponent'?200:250);
+  setTimeout(()=>burstConfetti(winner==='player'?250:winner==='opponent'?120:180),600);
+  setTimeout(()=>burstConfetti(winner==='player'?180:winner==='opponent'?80:120),1200);
   if(!animFrame)animateCelebration();
   setTimeout(()=>{celebrationActive=false},4000);
 }
-
 function animateCelebration(){
   cctx.clearRect(0,0,celebCanvas.width,celebCanvas.height);let alive=false;
   for(const p of particles){p.update();p.draw();if(p.opacity>0&&p.y<celebCanvas.height+50)alive=true}
@@ -168,12 +204,13 @@ function animateCelebration(){
 
 /* ==================== GAME STATE ==================== */
 let G = {
-  difficulty: 'medium',
+  mode: 'medium',
   phase: 'intro',
   round: 1,
   maxRounds: 5,
   isPlayerTurn: true,
-  score: {player:0, computer:0},
+  amIHost: true,
+  score: {me:0, opponent:0},
   target: {x:0, y:0},
   aimSet: false,
   power: 0,
@@ -185,11 +222,11 @@ let G = {
   resultTimer: 0,
   introTimer: 0,
   gameOver: false,
+  onlineWaiting: false,
+  opponentLeft: false,
 };
 
-/* ==================== CONSTANTS ==================== */
 const GOAL_L=0.15, GOAL_R=0.85, GOAL_T=0.08, GOAL_B=0.55;
-const KEEPER_SPEED=3;
 
 function initRound(){
   G.phase='intro';
@@ -209,31 +246,41 @@ function initRound(){
   G.keeper.diveDir=0;
   G.keeper.diving=false;
   G.keeper.diveTimer=0;
-  // AI decides dive direction at shoot time
-  infoText.textContent=`Round ${G.round} - ${G.isPlayerTurn?'Your turn! Aim at the goal':'Computer is shooting...'}`;
+  if(G.mode==='online'){
+    if(G.isPlayerTurn)infoText.textContent=`Round ${G.round} — Your turn! Aim at the goal`;
+    else {infoText.textContent='⏳ Waiting for opponent...';G.onlineWaiting=true}
+  } else {
+    infoText.textContent=`Round ${G.round} — ${G.isPlayerTurn?'Your turn! Aim at the goal':'Computer is shooting...'}`;
+  }
 }
 
-function startGame(diff){
-  G.difficulty=diff;
+function startGame(m, host=true){
+  G.mode=m;
+  G.amIHost=host;
   G.round=1;
-  G.isPlayerTurn=true;
-  G.score={player:0,computer:0};
+  G.isPlayerTurn=m==='online'?host:true;
+  G.score={me:0, opponent:0};
   G.gameOver=false;
-  [menuSc].forEach(e=>e.classList.remove('active')); gameSc.classList.add('active');
+  G.opponentLeft=false;
+  G.onlineWaiting=false;
+  controlsArea.style.display='none';
+  [menuSc,lobbySc].forEach(e=>e.classList.remove('active')); gameSc.classList.add('active');
   updateScoreDisplay();
   resize();
   initRound();
-  if(!G.isPlayerTurn) setTimeout(computerShoot,1000);
+  if(m==='online'&&!G.isPlayerTurn){G.onlineWaiting=true;infoText.textContent='⏳ Waiting for opponent to take first shot...'}
+  if(m!=='online'&&!G.isPlayerTurn)setTimeout(computerShoot,1000);
   draw();
 }
 
 function backToMenu(){
   G.gameOver=true;
-  [gameSc].forEach(e=>e.classList.remove('active')); menuSc.classList.add('active');
+  [gameSc,lobbySc].forEach(e=>e.classList.remove('active')); menuSc.classList.add('active');
 }
 
 function updateScoreDisplay(){
-  scoreDisplay.textContent=`You ${G.score.player} - ${G.score.computer} Computer`;
+  if(G.mode==='online')scoreDisplay.textContent=`You ${G.score.me} - ${G.score.opponent} Opponent`;
+  else scoreDisplay.textContent=`You ${G.score.me} - ${G.score.opponent} Computer`;
 }
 
 /* ==================== SHOOTING ==================== */
@@ -286,20 +333,21 @@ function shoot(){
   G.ball.x=bx; G.ball.y=by;
   G.ball.vx=dx/frames; G.ball.vy=dy/frames;
   G.ball.tx=tx; G.ball.ty=ty;
-  // Keeper dive
-  const keeperReaction=G.difficulty==='easy'?200:G.difficulty==='medium'?120:60;
-  const keeperAccuracy=G.difficulty==='easy'?0.3:G.difficulty==='medium'?0.55:0.8;
+
+  if(G.mode==='online'){
+    // Online: keeper acts as opponent's defender — random dive
+    G.keeper.diveDir=Math.random()<0.33?-1:Math.random()<0.5?0:1;
+    G.keeper.saveTarget=G.keeper.diveDir;
+    G.keeper.diving=true;
+    G.keeper.diveTimer=80;
+    infoText.textContent='⚡ Shoot!';
+    return;
+  }
+
+  const keeperReaction=G.mode==='easy'?200:G.mode==='medium'?120:60;
   G.keeper.diveDir=Math.random()<0.33?-1:Math.random()<0.5?0:1;
-  // On hard, keeper reads aim and dives toward it
-  if(G.difficulty==='hard'&&Math.random()<0.7){
-    const aimZone=tx<(g.l+g.r)/2?-1:tx>(g.l+g.r)/2?1:0;
-    G.keeper.diveDir=aimZone;
-  }
-  // Medium sometimes guesses right
-  if(G.difficulty==='medium'&&Math.random()<0.4){
-    const aimZone=tx<(g.l+g.r)/2?-1:tx>(g.l+g.r)/2?1:0;
-    G.keeper.diveDir=aimZone;
-  }
+  if(G.mode==='hard'&&Math.random()<0.7){const aimZone=tx<(g.l+g.r)/2?-1:tx>(g.l+g.r)/2?1:0;G.keeper.diveDir=aimZone}
+  if(G.mode==='medium'&&Math.random()<0.4){const aimZone=tx<(g.l+g.r)/2?-1:tx>(g.l+g.r)/2?1:0;G.keeper.diveDir=aimZone}
   G.keeper.saveTarget=G.keeper.diveDir;
   G.keeper.diving=true;
   G.keeper.diveTimer=keeperReaction;
@@ -307,10 +355,9 @@ function shoot(){
 }
 
 function computerShoot(){
-  if(G.gameOver)return;
+  if(G.gameOver||G.mode==='online')return;
   G.phase='shoot';
   const g=getGoalBounds();
-  // Random target
   const zones=[[-1,-1],[-1,0],[-1,1],[0,-1],[0,0],[0,1],[1,-1],[1,0],[1,1]];
   const zone=zones[Math.floor(Math.random()*zones.length)];
   const cx=(g.l+g.r)/2, cy=(g.t+g.b)/2;
@@ -329,8 +376,6 @@ function computerShoot(){
   G.ball.x=bx; G.ball.y=by;
   G.ball.vx=dx/frames; G.ball.vy=dy/frames;
   G.ball.tx=tx; G.ball.ty=ty;
-  // Player keeper AI
-  const playerSaveChance=0.25;
   G.keeper.diveDir=Math.random()<0.33?-1:Math.random()<0.5?0:1;
   G.keeper.saveTarget=G.keeper.diveDir;
   G.keeper.diving=true;
@@ -338,113 +383,139 @@ function computerShoot(){
   infoText.textContent='🧤 Defend!';
 }
 
+/* ==================== RESOLVE SHOT ==================== */
+function resolveShot(){
+  const g=getGoalBounds();
+  const inGoal=G.ball.x>=g.l&&G.ball.x<=g.r&&G.ball.y>=g.t&&G.ball.y<=g.b;
+  if(inGoal){
+    if(G.mode==='online'){
+      // Online: simpler save check — keeper has zone-based save chance
+      const saveRange=(g.r-g.l)*0.22;
+      const saveZone=G.keeper.saveTarget===0?W/2:G.keeper.saveTarget===1?g.r-saveRange:g.l+saveRange;
+      const nearKeeper=Math.abs(G.ball.x-saveZone)<saveRange;
+      const heightFactor=G.ball.y<H*0.2?1.4:G.ball.y<H*0.35?1.1:0.8;
+      const saved=nearKeeper?Math.random()<0.5*heightFactor:Math.random()<0.08;
+      if(saved){G.result='saved'} else {G.result='goal'}
+    } else {
+      const saveRange=(g.r-g.l)*0.25;
+      const saveZone=G.keeper.saveTarget===0?W/2:G.keeper.saveTarget===1?g.r-saveRange:g.l+saveRange;
+      const nearKeeper=Math.abs(G.ball.x-saveZone)<saveRange;
+      const heightFactor=G.ball.y<H*0.2?1.3:G.ball.y<H*0.35?1:0.7;
+      let saveChance=nearKeeper?0.4*heightFactor:0.05;
+      if(G.mode==='easy')saveChance*=0.7;
+      if(G.mode==='hard')saveChance*=1.3;
+      const saved=Math.random()<saveChance;
+      if(saved){G.result='saved'} else {G.result='goal'}
+    }
+  } else {
+    G.result='miss';
+  }
+
+  if(G.result==='goal'){
+    if(G.isPlayerTurn)G.score.me++; else G.score.opponent++;
+    infoText.textContent='⚽ GOAL!';
+  } else if(G.result==='saved'){
+    infoText.textContent='🧤 Saved!';
+  } else {
+    infoText.textContent='💨 Missed!';
+  }
+  updateScoreDisplay();
+  G.phase='result';
+  G.resultTimer=100;
+
+  // Online: send shot result to opponent
+  if(G.mode==='online'&&onlineConn&&onlineConn.open){
+    try{
+      onlineConn.send({
+        type:'shot', targetX:G.target.x, targetY:G.target.y, power:G.power,
+        keeperDiveDir:G.keeper.saveTarget, result:G.result,
+        round:G.round, myScore:G.score.me, oppScore:G.score.opponent,
+      });
+    }catch(e){}
+  }
+}
+
+/* ==================== RECEIVE OPPONENT SHOT ==================== */
+function receiveOpponentShot(data){
+  if(G.gameOver||G.mode!=='online')return;
+  G.onlineWaiting=false;
+  G.phase='shoot';
+  G.target.x=data.targetX; G.target.y=data.targetY;
+  G.power=data.power;
+  G.keeper.saveTarget=data.keeperDiveDir;
+  G.keeper.diveDir=data.keeperDiveDir;
+  G.result=data.result;
+  G.score.me=data.oppScore;
+  G.score.opponent=data.myScore;
+  updateScoreDisplay();
+  const tx=data.targetX, ty=data.targetY;
+  const bx=W/2, by=H*0.85;
+  const dx=tx-bx, dy=ty-by;
+  const dist=Math.sqrt(dx*dx+dy*dy);
+  const speed=2+data.power/25;
+  const frames=Math.max(15,dist/speed);
+  G.ball.x=bx; G.ball.y=by;
+  G.ball.vx=dx/frames; G.ball.vy=dy/frames;
+  G.ball.tx=tx; G.ball.ty=ty;
+  G.keeper.x=W/2;
+  G.keeper.y=H*0.38;
+  G.keeper.diveX=G.keeper.saveTarget===0?W/2:G.keeper.saveTarget===1?W*0.85:W*0.15;
+  G.keeper.diving=true;
+  G.keeper.diveTimer=0;
+  infoText.textContent=data.result==='goal'?'⚽ Opponent scored!':data.result==='saved'?'🧤 You saved!':'💨 Opponent missed!';
+}
+
 /* ==================== UPDATE ==================== */
 function update(){
-  if(G.gameOver)return;
+  if(G.gameOver||G.opponentLeft)return;
 
-  // Intro countdown
   if(G.phase==='intro'){
     G.introTimer--;
     if(G.introTimer<=0){
       G.phase='aim';
-      if(G.isPlayerTurn){
-        infoText.textContent='👆 Tap on the goal to aim, then tap again to shoot!';
-      }
+      if(G.isPlayerTurn&&G.mode!=='online')infoText.textContent='👆 Tap on the goal to aim, then tap again to shoot!';
+      else if(G.isPlayerTurn&&G.mode==='online')infoText.textContent='👆 Aim at the goal, then tap to shoot!';
     }
     return;
   }
 
-  // Power bar oscillation
   if(G.phase==='power'&&!G.powerLocked){
     G.power+=G.powerRising?1.5:-1.5;
     if(G.power>=100)G.powerRising=false;
     if(G.power<=5)G.powerRising=true;
   }
 
-  // Ball animation
   if(G.phase==='shoot'){
     G.ball.x+=G.ball.vx;
     G.ball.y+=G.ball.vy;
-
-    // Keeper dive
     if(G.keeper.diving&&G.keeper.diveTimer>0){
       G.keeper.diveTimer--;
-      if(G.keeper.diveTimer<=0){
-        // Start diving
-        const targetX=G.keeper.saveTarget===0?W/2:G.keeper.saveTarget===1?W*0.85:W*0.15;
-        G.keeper.diveX=targetX;
-      }
+      if(G.keeper.diveTimer<=0)G.keeper.diveX=G.keeper.saveTarget===0?W/2:G.keeper.saveTarget===1?W*0.85:W*0.15;
     }
-    if(G.keeper.diveTimer<=0){
-      G.keeper.x+=(G.keeper.diveX-G.keeper.x)*0.1;
-    }
-
-    // Check if ball reached target
+    if(G.keeper.diveTimer<=0)G.keeper.x+=(G.keeper.diveX-G.keeper.x)*0.1;
     const dx=G.ball.x-G.ball.tx;
     const dy=G.ball.y-G.ball.ty;
-    const dist=Math.sqrt(dx*dx+dy*dy);
-
-    if(dist<10||G.ball.y<H*GOAL_T-10||G.ball.x<0||G.ball.x>W){
-      // Determine result
-      const g=getGoalBounds();
-      const inGoal=G.ball.x>=g.l&&G.ball.x<=g.r&&G.ball.y>=g.t&&G.ball.y<=g.b;
-
-      if(inGoal){
-        // Check if keeper saved
-        const saveRange=(g.r-g.l)*0.25;
-        const saveZone=G.keeper.saveTarget===0?W/2:G.keeper.saveTarget===1?g.r-saveRange:g.l+saveRange;
-        const nearKeeper=Math.abs(G.ball.x-saveZone)<saveRange;
-        const heightFactor=G.ball.y<H*0.2?1.3:G.ball.y<H*0.35?1:0.7;
-        let saveChance=nearKeeper?0.4*heightFactor:0.05;
-        if(G.difficulty==='easy')saveChance*=0.7;
-        if(G.difficulty==='hard')saveChance*=1.3;
-        const saved=Math.random()<saveChance;
-
-        if(saved){
-          G.result='saved';
-          infoText.textContent='🧤 Saved!';
-        } else {
-          G.result='goal';
-          infoText.textContent='⚽ GOAL!';
-          if(G.isPlayerTurn)G.score.player++; else G.score.computer++;
-        }
-      } else {
-        G.result='miss';
-        infoText.textContent='💨 Missed!';
-      }
-      updateScoreDisplay();
-      G.phase='result';
-      G.resultTimer=100;
+    if(Math.sqrt(dx*dx+dy*dy)<10||G.ball.y<H*GOAL_T-10||G.ball.x<0||G.ball.x>W){
+      resolveShot();
       return;
     }
   }
 
-  // Result timer
   if(G.phase==='result'){
     G.resultTimer--;
     if(G.resultTimer<=0){
-      if(!G.isPlayerTurn)G.round++;
+      // Check match end: 5 rounds each, then sudden death
+      const max=G.maxRounds;
+      if(G.round>max&&G.score.me!==G.score.opponent){endMatch();return}
+      if(G.round>max*2){endMatch();return}
+      if(G.round>max&&G.score.me===G.score.opponent){
+        // sudden death — continue
+      }
       G.isPlayerTurn=!G.isPlayerTurn;
-      // Check match end
-      const playerDone=Math.ceil(G.round/2)+(G.isPlayerTurn?0:0);
-      const shotsPerSide=G.maxRounds;
-
-      if(G.round>shotsPerSide&&Math.abs(G.score.player-G.score.computer)>0){
-        endMatch();
-        return;
-      }
-      if(G.round>shotsPerSide*2){
-        endMatch();
-        return;
-      }
-      // Sudden death after maxRounds each
-      if(G.round>shotsPerSide){
-        if(G.isPlayerTurn&&G.score.player!==G.score.computer){
-          // This shouldn't happen in real penalties but handle it
-        }
-      }
+      if(!G.isPlayerTurn&&G.mode!=='online')G.round++;
+      if(G.isPlayerTurn&&G.mode==='online')G.round++;
       initRound();
-      if(!G.isPlayerTurn)setTimeout(computerShoot,800);
+      if(G.mode!=='online'&&!G.isPlayerTurn)setTimeout(computerShoot,800);
     }
   }
 }
@@ -453,12 +524,15 @@ function endMatch(){
   G.gameOver=true;
   G.phase='gameover';
   controlsArea.style.display='flex';
-  if(G.score.player>G.score.computer){
+  if(G.mode==='online'&&onlineConn&&onlineConn.open){
+    try{onlineConn.send({type:'game_over',winner:G.score.me>G.score.opponent?'me':'opponent',draw:G.score.me===G.score.opponent})}catch(e){}
+  }
+  if(G.score.me>G.score.opponent){
     infoText.textContent='🏆 YOU WIN! What a legend!';
     celebrate('player');
-  } else if(G.score.player<G.score.computer){
+  } else if(G.score.me<G.score.opponent){
     infoText.textContent='😵 You lose! Better luck next time.';
-    celebrate('computer');
+    celebrate('opponent');
   } else {
     infoText.textContent='🤝 It\'s a draw!';
     celebrate('draw');
@@ -468,216 +542,123 @@ function endMatch(){
 /* ==================== DRAW ==================== */
 function draw(){
   ctx.clearRect(0,0,W,H);
-
-  // Pitch background
   const grad=ctx.createLinearGradient(0,0,0,H);
   grad.addColorStop(0,'#1a5c2a');
   grad.addColorStop(0.5,'#1e6e30');
   grad.addColorStop(1,'#1a5c2a');
-  ctx.fillStyle=grad;
-  ctx.fillRect(0,0,W,H);
-
-  // Pitch lines
-  ctx.strokeStyle='rgba(255,255,255,0.15)';
-  ctx.lineWidth=2;
-  // Center circle
+  ctx.fillStyle=grad;ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,0.15)';ctx.lineWidth=2;
   ctx.beginPath();ctx.arc(W/2,H*0.85,40,0,Math.PI*2);ctx.stroke();
-  // Penalty area outline (subtle)
   ctx.strokeRect(W*0.25,H*0.65,W*0.5,H*0.2);
 
   const g=getGoalBounds();
-
-  // Goal shadow/depth
-  ctx.fillStyle='rgba(0,0,0,0.3)';
-  ctx.fillRect(g.l+4,H*0.59,g.r-g.l-8,H*0.06);
-
-  // Net background
-  ctx.fillStyle='rgba(255,255,255,0.08)';
-  ctx.fillRect(g.l,g.t,g.r-g.l,g.b-g.t);
-
-  // Net pattern
-  ctx.strokeStyle='rgba(255,255,255,0.12)';
-  ctx.lineWidth=1;
+  ctx.fillStyle='rgba(0,0,0,0.3)';ctx.fillRect(g.l+4,H*0.59,g.r-g.l-8,H*0.06);
+  ctx.fillStyle='rgba(255,255,255,0.08)';ctx.fillRect(g.l,g.t,g.r-g.l,g.b-g.t);
+  ctx.strokeStyle='rgba(255,255,255,0.12)';ctx.lineWidth=1;
   const cols=12, rows=8;
   const cw=(g.r-g.l)/cols, rh=(g.b-g.t)/rows;
   for(let c=0;c<=cols;c++){ctx.beginPath();ctx.moveTo(g.l+c*cw,g.t);ctx.lineTo(g.l+c*cw,g.b);ctx.stroke()}
   for(let r=0;r<=rows;r++){ctx.beginPath();ctx.moveTo(g.l,g.t+r*rh);ctx.lineTo(g.r,g.t+r*rh);ctx.stroke()}
+  ctx.strokeStyle='#fff';ctx.lineWidth=4;ctx.strokeRect(g.l,g.t,g.r-g.l,g.b-g.t);
 
-  // Goal frame (behind the net)
-  ctx.strokeStyle='#fff';
-  ctx.lineWidth=4;
-  ctx.strokeRect(g.l,g.t,g.r-g.l,g.b-g.t);
-  // Posts highlight
-  ctx.strokeStyle='rgba(255,255,255,0.3)';
-  ctx.lineWidth=2;
-  for(let side of[g.l,g.r]){
-    const pgrad=ctx.createLinearGradient(side,g.t,side,g.b);
-    pgrad.addColorStop(0,'rgba(255,255,255,0.1)');
-    pgrad.addColorStop(0.5,'rgba(255,255,255,0.4)');
-    pgrad.addColorStop(1,'rgba(255,255,255,0.1)');
-    ctx.strokeStyle=pgrad;ctx.lineWidth=6;
-    ctx.beginPath();ctx.moveTo(side,g.t);ctx.lineTo(side,g.b);ctx.stroke();
-  }
-
-  // Goal scores zones (subtle)
+  // Goal zones (subtle during aim)
   if(G.phase==='aim'&&G.isPlayerTurn){
     const zoneW=(g.r-g.l)/3, zoneH=(g.b-g.t)/3;
-    for(let zx=0;zx<3;zx++){
-      for(let zy=0;zy<3;zy++){
-        const zl=g.l+zx*zoneW, zt=g.t+zy*zoneH;
-        ctx.fillStyle='rgba(255,255,255,0.03)';
-        ctx.strokeStyle='rgba(255,255,255,0.05)';
-        ctx.lineWidth=1;
-        ctx.strokeRect(zl,zt,zoneW,zoneH);
-      }
+    for(let zx=0;zx<3;zx++)for(let zy=0;zy<3;zy++){
+      ctx.strokeStyle='rgba(255,255,255,0.05)';ctx.lineWidth=1;
+      ctx.strokeRect(g.l+zx*zoneW,g.t+zy*zoneH,zoneW,zoneH);
     }
   }
 
-  // Goalkeeper
   drawKeeper(g);
-
-  // Ball
-  if(G.phase!=='intro'||G.introTimer<30){
-    drawBall(g);
-  }
+  if(G.phase!=='intro'||G.introTimer<30)drawBall(g);
 
   // Aim indicator
   if(G.phase==='aim'&&G.isPlayerTurn&&G.aimSet){
-    ctx.beginPath();
-    ctx.arc(G.target.x,G.target.y,12,0,Math.PI*2);
-    ctx.strokeStyle='rgba(255,50,50,0.7)';
-    ctx.lineWidth=2;
-    ctx.setLineDash([4,4]);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    // Crosshair
-    ctx.strokeStyle='rgba(255,50,50,0.5)';
-    ctx.lineWidth=1;
+    ctx.beginPath();ctx.arc(G.target.x,G.target.y,12,0,Math.PI*2);
+    ctx.strokeStyle='rgba(255,50,50,0.7)';ctx.lineWidth=2;ctx.setLineDash([4,4]);ctx.stroke();ctx.setLineDash([]);
+    ctx.strokeStyle='rgba(255,50,50,0.5)';ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(G.target.x-15,G.target.y);ctx.lineTo(G.target.x+15,G.target.y);ctx.stroke();
     ctx.beginPath();ctx.moveTo(G.target.x,G.target.y-15);ctx.lineTo(G.target.x,G.target.y+15);ctx.stroke();
   }
 
-  // Power bar
-  if(G.phase==='power'){
-    drawPowerBar();
-  }
-
-  // Shot trajectory (ghost ball)
+  if(G.phase==='power')drawPowerBar();
   if(G.phase==='shoot'||G.phase==='result'){
-    ctx.beginPath();
-    ctx.arc(G.ball.x,G.ball.y,6,0,Math.PI*2);
-    ctx.fillStyle='rgba(255,255,255,0.9)';
-    ctx.fill();
-    ctx.strokeStyle='rgba(255,255,255,0.3)';
-    ctx.lineWidth=1;
-    ctx.beginPath();
-    ctx.arc(G.ball.x,G.ball.y,10,0,Math.PI*2);
-    ctx.stroke();
+    ctx.beginPath();ctx.arc(G.ball.x,G.ball.y,6,0,Math.PI*2);
+    ctx.fillStyle='rgba(255,255,255,0.9)';ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.3)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.arc(G.ball.x,G.ball.y,10,0,Math.PI*2);ctx.stroke();
   }
-
-  // Result text on goal
   if(G.phase==='result'||G.phase==='gameover'){
     const txt=G.result==='goal'?'⚽ GOAL!':G.result==='saved'?'🧤 SAVED!':'💨 MISS!';
     const col=G.result==='goal'?'#22c55e':G.result==='saved'?'#fbbf24':'#ef4444';
     ctx.fillStyle=col;
     ctx.font='bold 32px "Segoe UI",sans-serif';
     ctx.textAlign='center';
-    ctx.shadowColor='rgba(0,0,0,0.8)';
-    ctx.shadowBlur=10;
+    ctx.shadowColor='rgba(0,0,0,0.8)';ctx.shadowBlur=10;
     ctx.fillText(txt,W/2,H*0.7);
     ctx.shadowBlur=0;
+  }
+  // Waiting overlay
+  if(G.onlineWaiting){
+    ctx.fillStyle='rgba(0,0,0,0.4)';
+    ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#fbbf24';
+    ctx.font='bold 20px "Segoe UI",sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText('⏳ Waiting for opponent...',W/2,H/2);
+  }
+  // Opponent left
+  if(G.opponentLeft){
+    ctx.fillStyle='rgba(0,0,0,0.6)';
+    ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#ef4444';
+    ctx.font='bold 22px "Segoe UI",sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText('❌ Opponent disconnected',W/2,H/2-10);
   }
 }
 
 function drawKeeper(g){
   const kx=G.keeper.x, ky=G.keeper.y;
   const kw=26, kh=38;
-
-  // Shadow
   ctx.fillStyle='rgba(0,0,0,0.2)';
   ctx.beginPath();ctx.ellipse(kx,ky+kh/2+4,kw/2+4,4,0,0,Math.PI*2);ctx.fill();
-
-  // Body (jersey)
   const jgrd=ctx.createLinearGradient(kx-kw/2,ky,kx+kw/2,ky);
-  jgrd.addColorStop(0,'#eab308');
-  jgrd.addColorStop(0.5,'#facc15');
-  jgrd.addColorStop(1,'#eab308');
+  jgrd.addColorStop(0,'#eab308');jgrd.addColorStop(0.5,'#facc15');jgrd.addColorStop(1,'#eab308');
   ctx.fillStyle=jgrd;
-  ctx.beginPath();
-  ctx.roundRect(kx-kw/2,ky-kh/2,kw,kh,4);
-  ctx.fill();
-
-  // Jersey stripes
-  ctx.fillStyle='rgba(0,0,0,0.1)';
-  ctx.fillRect(kx-2,ky-kh/2+2,4,6);
-  ctx.fillRect(kx-2,ky+kh/2-8,4,6);
-
-  // Arms
-  ctx.fillStyle='#facc15';
-  ctx.fillRect(kx-kw/2-8,ky-4,8,6);
-  ctx.fillRect(kx+kw/2,ky-4,8,6);
-
-  // Head
-  ctx.fillStyle='#f5cba7';
-  ctx.beginPath();ctx.arc(kx,ky-kh/2-8,10,0,Math.PI*2);ctx.fill();
-
-  // Hands (gloves)
-  ctx.fillStyle='#22c55e';
-  ctx.beginPath();ctx.arc(kx-kw/2-8,ky-2,5,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.roundRect(kx-kw/2,ky-kh/2,kw,kh,4);ctx.fill();
+  ctx.fillStyle='rgba(0,0,0,0.1)';ctx.fillRect(kx-2,ky-kh/2+2,4,6);ctx.fillRect(kx-2,ky+kh/2-8,4,6);
+  ctx.fillStyle='#facc15';ctx.fillRect(kx-kw/2-8,ky-4,8,6);ctx.fillRect(kx+kw/2,ky-4,8,6);
+  ctx.fillStyle='#f5cba7';ctx.beginPath();ctx.arc(kx,ky-kh/2-8,10,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#22c55e';ctx.beginPath();ctx.arc(kx-kw/2-8,ky-2,5,0,Math.PI*2);ctx.fill();
   ctx.beginPath();ctx.arc(kx+kw/2+8,ky-2,5,0,Math.PI*2);ctx.fill();
-
-  // Hat/cap
-  ctx.fillStyle='#eab308';
-  ctx.beginPath();ctx.arc(kx,ky-kh/2-8,8,Math.PI,0);ctx.fill();
+  ctx.fillStyle='#eab308';ctx.beginPath();ctx.arc(kx,ky-kh/2-8,8,Math.PI,0);ctx.fill();
 }
 
 function drawBall(g){
-  // Ball shadow
   ctx.fillStyle='rgba(0,0,0,0.15)';
   ctx.beginPath();ctx.ellipse(W/2+4,H*0.85+6,10,5,0,0,Math.PI*2);ctx.fill();
-
-  // Ball
-  ctx.beginPath();
-  ctx.arc(W/2,H*0.85,10,0,Math.PI*2);
+  ctx.beginPath();ctx.arc(W/2,H*0.85,10,0,Math.PI*2);
   const bgrd=ctx.createRadialGradient(W/2-3,H*0.85-3,2,W/2,H*0.85,10);
-  bgrd.addColorStop(0,'#fff');
-  bgrd.addColorStop(0.7,'#eee');
-  bgrd.addColorStop(1,'#ccc');
+  bgrd.addColorStop(0,'#fff');bgrd.addColorStop(0.7,'#eee');bgrd.addColorStop(1,'#ccc');
   ctx.fillStyle=bgrd;ctx.fill();
-  ctx.strokeStyle='rgba(0,0,0,0.15)';
-  ctx.lineWidth=1;
-  ctx.stroke();
-
-  // Pentagon pattern (simplified)
-  ctx.fillStyle='rgba(0,0,0,0.08)';
-  ctx.beginPath();
-  for(let i=0;i<5;i++){
-    const angle=i*2*Math.PI/5-Math.PI/2;
-    const px=W/2+4*Math.cos(angle), py=H*0.85+4*Math.sin(angle);
-    i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
-  }
+  ctx.strokeStyle='rgba(0,0,0,0.15)';ctx.lineWidth=1;ctx.stroke();
+  ctx.fillStyle='rgba(0,0,0,0.08)';ctx.beginPath();
+  for(let i=0;i<5;i++){const a=i*2*Math.PI/5-Math.PI/2;i===0?ctx.moveTo(W/2+4*Math.cos(a),H*0.85+4*Math.sin(a)):ctx.lineTo(W/2+4*Math.cos(a),H*0.85+4*Math.sin(a))}
   ctx.closePath();ctx.fill();
 }
 
 function drawPowerBar(){
   const barW=W*0.6, barH=14, barX=(W-barW)/2, barY=H*0.65;
-  // Background
   ctx.fillStyle='rgba(0,0,0,0.4)';
   ctx.beginPath();ctx.roundRect(barX-2,barY-2,barW+4,barH+4,10);ctx.fill();
-  // Fill
-  const fillW=barW*(G.power/100);
-  const pct=G.power/100;
-  const r=Math.round(255*pct), g=Math.round(255*(1-pct));
-  ctx.fillStyle=`rgb(${r},${g},50)`;
+  const fillW=barW*(G.power/100), pct=G.power/100;
+  ctx.fillStyle=`rgb(${Math.round(255*pct)},${Math.round(255*(1-pct))},50)`;
   ctx.beginPath();ctx.roundRect(barX,barY,fillW,barH,8);ctx.fill();
-  // Border
-  ctx.strokeStyle='rgba(255,255,255,0.3)';
-  ctx.lineWidth=1;
+  ctx.strokeStyle='rgba(255,255,255,0.3)';ctx.lineWidth=1;
   ctx.beginPath();ctx.roundRect(barX-2,barY-2,barW+4,barH+4,10);ctx.stroke();
-  // Label
-  ctx.fillStyle='rgba(255,255,255,0.7)';
-  ctx.font='11px "Segoe UI",sans-serif';
-  ctx.textAlign='center';
+  ctx.fillStyle='rgba(255,255,255,0.7)';ctx.font='11px "Segoe UI",sans-serif';ctx.textAlign='center';
   ctx.fillText(`Power: ${Math.round(G.power)}%`,W/2,barY+barH+16);
 }
 
@@ -685,31 +666,162 @@ function drawPowerBar(){
 let touched=false;
 canvas.addEventListener('mousemove',handleAim);
 canvas.addEventListener('touchmove',handleAim,{passive:false});
-
 canvas.addEventListener('touchstart',(e)=>{
   touched=true;setTimeout(()=>touched=false,500);
-  if(G.gameOver)return;
+  if(G.gameOver||G.opponentLeft)return;
   if(G.phase==='aim'&&G.isPlayerTurn)confirmAim(e);
   else if(G.phase==='power'&&G.isPlayerTurn&&!G.powerLocked)lockPower(e);
 },{passive:false});
 canvas.addEventListener('click',(e)=>{
   if(touched)return;
-  if(G.gameOver)return;
+  if(G.gameOver||G.opponentLeft)return;
   if(G.phase==='aim'&&G.isPlayerTurn)confirmAim(e);
   else if(G.phase==='power'&&G.isPlayerTurn&&!G.powerLocked)lockPower(e);
 });
 
 btnRestart.addEventListener('click',()=>{
+  if(G.opponentLeft){G.opponentLeft=false;cleanupOnline();controlsArea.style.display='none';backToMenu();return}
   controlsArea.style.display='none';
-  startGame(G.difficulty);
+  if(G.mode==='online'){resetOnlineGame()} else {startGame(G.mode)}
 });
 
-/* ==================== GAME LOOP ==================== */
-function gameLoop(){
-  update();
-  draw();
-  requestAnimationFrame(gameLoop);
+function resetOnlineGame(){
+  if(onlineConn)try{onlineConn.send({type:'new_game'})}catch(e){}
+  G.round=1;
+  G.isPlayerTurn=G.amIHost;
+  G.score={me:0,opponent:0};
+  G.gameOver=false;G.opponentLeft=false;G.onlineWaiting=false;
+  controlsArea.style.display='none';
+  updateScoreDisplay();initRound();draw();
 }
+
+/* ==================== ONLINE ==================== */
+let onlineConn=null,onlinePeer=null,myRoomCode=null,randomSearching=false,pingInterval=null;
+const ICE_SERVERS=[
+  {urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'},{urls:'stun:stun2.l.google.com:19302'},
+  {urls:'stun:stun3.l.google.com:19302'},{urls:'stun:stun4.l.google.com:19302'},{urls:'stun:stun.cloudflare.com:3478'},
+  {urls:'turn:openrelay.metered.ca:80'},{urls:'turn:openrelay.metered.ca:443?transport=tcp'},{urls:'turn:openrelay.metered.ca:443?transport=udp'},
+];
+function newPeer(id,extra){return new Peer(id,{...extra,config:{iceServers:ICE_SERVERS,iceCandidatePoolSize:10}})}
+function startHeartbeat(){stopHeartbeat();pingInterval=setInterval(()=>{if(onlineConn&&onlineConn.open){try{onlineConn.send({type:'ping'})}catch(e){}}},25000);}
+function stopHeartbeat(){if(pingInterval){clearInterval(pingInterval);pingInterval=null}}
+function cleanupOnline(){
+  stopHeartbeat();randomSearching=false;
+  if(onlineConn){try{onlineConn.close()}catch(e){}onlineConn=null}
+  if(onlinePeer){try{onlinePeer.destroy()}catch(e){}onlinePeer=null}
+  myRoomCode=null;
+  localStorage.removeItem('fl_room');localStorage.removeItem('fl_ishost');
+}
+function genCode(){const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let r='';for(let i=0;i<6;i++)r+=c[Math.floor(Math.random()*c.length)];return r}
+
+const btnCreate=document.getElementById('btnCreateRoom'),btnJoin=document.getElementById('btnJoinRoom'),btnRand=document.getElementById('btnRandom');
+const btnCancel=document.getElementById('btnCancelRoom'),btnJoinSubmit=document.getElementById('btnJoinSubmit');
+const lobbyStatus=document.getElementById('lobbyStatus');
+const roomCodeArea=document.getElementById('roomCodeArea'),roomCodeDisplay=document.getElementById('roomCodeDisplay');
+const waitingMsg=document.getElementById('waitingMsg'),joinArea=document.getElementById('joinArea'),joinInput=document.getElementById('joinInput');
+
+function showScreen(s){[menuSc,lobbySc,gameSc].forEach(e=>e.classList.remove('active'));s.classList.add('active')}
+function showLobby(){showScreen(lobbySc);enableLobbyBtns();resetLobbyUI();lobbyStatus.textContent='Start by creating, joining, or finding a random match'}
+function resetLobbyUI(){roomCodeArea.style.display='none';joinArea.style.display='none';waitingMsg.style.display='block'}
+function enableLobbyBtns(){btnCreate.disabled=false;btnJoin.disabled=false;btnRand.disabled=false;btnJoinSubmit.disabled=false;joinInput.disabled=false}
+function disableLobbyBtns(){btnCreate.disabled=true;btnJoin.disabled=true;btnRand.disabled=true;btnJoinSubmit.disabled=true;joinInput.disabled=true}
+function backFromLobby(){cleanupOnline();showScreen(menuSc)}
+
+function createRoom(){
+  cleanupOnline();resetLobbyUI();disableLobbyBtns();lobbyStatus.textContent='⏳ Creating room...';
+  const code=genCode();
+  onlinePeer=newPeer(code,{debug:0});
+  onlinePeer.on('open',(id)=>{myRoomCode=id;localStorage.setItem('fl_room',id);localStorage.setItem('fl_ishost','true');roomCodeDisplay.textContent=myRoomCode;roomCodeArea.style.display='block';lobbyStatus.textContent='✅ Room created! Share the 6-digit code above.'});
+  onlinePeer.on('connection',(conn)=>{
+    onlineConn=conn;conn.on('data',(d)=>handleOnlineData(d));
+    conn.on('close',()=>{onlineConn=null;if(!G.gameOver&&G.mode==='online'&&gameSc.style.display!=='none'){G.opponentLeft=true;}});
+    lobbyStatus.textContent='✅ Opponent joined! Starting game...';waitingMsg.style.display='none';
+    setTimeout(()=>startGame('online',true),500);
+  });
+  onlinePeer.on('error',(err)=>{if(err.type==='unavailable-id'){if(onlinePeer)onlinePeer.destroy();createRoom()}else{lobbyStatus.textContent='❌ Error: '+err.type;roomCodeArea.style.display='none';enableLobbyBtns()}});
+}
+btnCreate.addEventListener('click',createRoom);
+
+btnCancel.addEventListener('click',()=>{cleanupOnline();resetLobbyUI();enableLobbyBtns();lobbyStatus.textContent='Room cancelled.'});
+btnJoin.addEventListener('click',()=>{cleanupOnline();resetLobbyUI();joinArea.style.display='block';lobbyStatus.textContent='Enter the 6-digit room code from your friend.';joinInput.value='';setTimeout(()=>joinInput.focus(),100)});
+btnJoinSubmit.addEventListener('click',joinRoomFn);
+joinInput.addEventListener('keydown',e=>{if(e.key==='Enter')joinRoomFn()});
+
+function joinRoomFn(){
+  const code=joinInput.value.trim().toUpperCase();
+  if(code.length!==6){lobbyStatus.textContent='⚠️ Code must be exactly 6 characters.';return}
+  disableLobbyBtns();lobbyStatus.textContent='⏳ Connecting...';
+  let joinAttempts=0;
+  function stillJoining(){return lobbySc.style.display!=='none'&&joinArea.style.display!=='none'}
+  function retryJoinFn(){
+    if(!stillJoining()){cleanupOnline();enableLobbyBtns();return}
+    joinAttempts++;
+    if(joinAttempts<3){lobbyStatus.textContent=`⏳ Retrying (${joinAttempts}/3)...`;cleanupOnline();setTimeout(doJoinFn,500);}
+    else{lobbyStatus.textContent='❌ Connection failed after 3 attempts.';cleanupOnline();enableLobbyBtns()}
+  }
+  function doJoinFn(){
+    if(!stillJoining()){cleanupOnline();enableLobbyBtns();return}
+    onlinePeer=newPeer(undefined,{debug:0});
+    onlinePeer.on('open',()=>{
+      if(!stillJoining()){cleanupOnline();enableLobbyBtns();return}
+      const conn=onlinePeer.connect(code,{serialization:'json'});onlineConn=conn;
+      const t=setTimeout(()=>{if(stillJoining()&&!conn.open)retryJoinFn()},30000);
+      conn.on('open',()=>{clearTimeout(t);localStorage.setItem('fl_room',code);localStorage.setItem('fl_ishost','false');lobbyStatus.textContent='✅ Connected! Starting game...';conn.on('data',(d)=>handleOnlineData(d));conn.on('close',()=>{onlineConn=null;if(!G.gameOver&&G.mode==='online'&&gameSc.style.display!=='none'){G.opponentLeft=true;}});setTimeout(()=>startGame('online',false),500);});
+      conn.on('error',()=>{if(stillJoining()){clearTimeout(t);retryJoinFn()}});
+    });
+    onlinePeer.on('error',()=>{if(stillJoining())retryJoinFn()});
+  }
+  doJoinFn();
+}
+
+const RANDOM_PREFIX='FL_';
+btnRand.addEventListener('click',()=>{
+  cleanupOnline();resetLobbyUI();disableLobbyBtns();randomSearching=true;lobbyStatus.textContent='🔍 Searching for an opponent...';
+  tryRandomConnect();
+});
+function tryRandomConnect(){
+  if(!randomSearching)return;
+  onlinePeer=newPeer(undefined,{debug:0});
+  onlinePeer.on('open',()=>{
+    const lobbyId=RANDOM_PREFIX+'LOBBY';const conn=onlinePeer.connect(lobbyId,{serialization:'json'});let responded=false;
+    const t=setTimeout(()=>{if(!responded){conn.close();if(onlinePeer)onlinePeer.destroy();becomeLobbyHost()}},2000);
+    conn.on('open',()=>{responded=true;clearTimeout(t);onlineConn=conn;lobbyStatus.textContent='✅ Match found! Starting game...';conn.on('data',(d)=>handleOnlineData(d));conn.on('close',()=>{onlineConn=null;if(!G.gameOver&&G.mode==='online'&&gameSc.style.display!=='none'){G.opponentLeft=true;}});setTimeout(()=>{randomSearching=false;enableLobbyBtns();startGame('online',false)},500);});
+    conn.on('error',()=>{clearTimeout(t);if(!responded){if(onlinePeer)onlinePeer.destroy();becomeLobbyHost()}});
+  });
+  onlinePeer.on('error',()=>{if(onlinePeer)onlinePeer.destroy();if(randomSearching)setTimeout(tryRandomConnect,1500)});
+}
+function becomeLobbyHost(){
+  if(!randomSearching)return;lobbyStatus.textContent='⏳ Waiting for a random opponent...';
+  onlinePeer=newPeer(RANDOM_PREFIX+'LOBBY',{debug:0});
+  onlinePeer.on('connection',(conn)=>{onlineConn=conn;lobbyStatus.textContent='✅ Match found! Starting game...';conn.on('data',(d)=>handleOnlineData(d));conn.on('close',()=>{onlineConn=null;if(!G.gameOver&&G.mode==='online'&&gameSc.style.display!=='none'){G.opponentLeft=true;}});setTimeout(()=>{randomSearching=false;enableLobbyBtns();startGame('online',true)},500);});
+  onlinePeer.on('error',(err)=>{if(err.type==='unavailable-id'){if(onlinePeer)onlinePeer.destroy();if(randomSearching)setTimeout(()=>{if(onlinePeer)onlinePeer.destroy();tryRandomConnect()},1000)}else{lobbyStatus.textContent='❌ Error: '+err.type;if(randomSearching)setTimeout(tryRandomConnect,2000)}});
+}
+
+function handleOnlineData(data){
+  if(data.type==='ping'){if(onlineConn)try{onlineConn.send({type:'pong'})}catch(e){};return}
+  if(data.type==='pong')return;
+  if(data.type==='new_game'){
+    if(G.mode==='online')resetOnlineGame();
+    return;
+  }
+  if(data.type==='game_over'){
+    G.gameOver=true;G.phase='gameover';
+    controlsArea.style.display='flex';
+    if(data.draw){infoText.textContent='🤝 It\'s a draw!';celebrate('draw')}
+    else if(data.winner==='opponent'){infoText.textContent='🏆 YOU WIN!';celebrate('player')}
+    else{infoText.textContent='😵 You lose!';celebrate('opponent')}
+    return;
+  }
+  if(data.type==='shot'){
+    receiveOpponentShot(data);
+  }
+}
+
+/* ==================== RECONNECT ==================== */
+(function(){const r=localStorage.getItem('fl_room');if(r){lobbyStatus.textContent=`🔄 Rejoin room ${r}? Create or join to dismiss.`}})();
+
+/* ==================== GAME LOOP ==================== */
+function gameLoop(){update();draw();requestAnimationFrame(gameLoop)}
 gameLoop();
 
 /* ==================== POLYFILL ==================== */
